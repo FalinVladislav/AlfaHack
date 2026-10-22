@@ -57,9 +57,9 @@ npm run dev
 
 ## API моделей
 
-Провайдер модели и его настройки вынесены в отдельную директорию [inference](inference/README.md). В этой ветке сервис не подключён к Compose и не требуется для запуска приложения. Backend использует абстракцию `LanguageModel`; HTTP-адаптер обращается к `POST /v1/chat` отдельного сервиса, если задан `MODEL_API_URL`. Таймаут задаётся через `MODEL_API_TIMEOUT_SECONDS`.
+AI-сервис [inference](inference/README.md) подключён к Docker Compose отдельно от бэкенда. По умолчанию он вызывает `gpt-5.6-terra` через Tooken Club с ключом `API_TOOKEN_CLUB` из корневого `.env`. Backend использует `LanguageModel` и `POST /v1/chat` по адресу `http://inference:8090`. Адрес можно переопределить через `MODEL_API_URL`, таймаут — `MODEL_API_TIMEOUT_SECONDS` (по умолчанию в Compose 70 секунд). Для новых сценариев есть `POST /v1/assist`: гипотезы роста, консультации, объяснение кассового разрыва, документы, договоры, опрос и подбор продуктов. Контракт для команды бэкенда: [OpenAPI](inference/openapi.json).
 
-Backend принимает только разрешённые поля `purpose`, `amount`, `term_months`, `duration_days`, `needed_by`; изменение черновика выполняется отдельным подтверждённым действием. При пустом `MODEL_API_URL` или недоступном сервисе помощник сообщает об этом, а форма и заявка продолжают работать. Локальный Maven/Java использует переменные окружения; корневой `.env` читает Docker Compose.
+Backend принимает только разрешённые поля `purpose`, `amount`, `term_months`, `duration_days`, `needed_by`; изменение черновика выполняется отдельным подтверждённым действием. При недоступном сервисе помощник сообщает об этом, а форма и заявка продолжают работать. Локальный Maven/Java использует переменные окружения; без `MODEL_API_URL` помощник отключён. Корневой `.env` читает Docker Compose; пустой `MODEL_API_URL` в нём включает адрес `http://inference:8090` по умолчанию.
 
 ## Тестовые пользователи и сценарий
 
@@ -99,7 +99,7 @@ Frontend повторяет макет кредитного кабинета: ф
 - `backend/src/main/java/org/alfahack/features` — фичи: интерфейсы (`port`), сценарии приложения (`application`), входные HTTP-адаптеры (`adapter/in/web`) и выходные адаптеры БД, ресурсов и API (`adapter/out`).
 - `backend/src/main/resources/schema.sql` — прежняя схема БД; `SeedData` загружает демонстрационные данные один раз.
 - `frontend/` — React-интерфейс клиента и сотрудника; nginx проксирует API в Compose.
-- `inference/` — независимый API моделей и интеграция провайдера; отдельно от backend и Compose.
+- `inference/` — отдельный Docker-сервис моделей, OpenAI-совместимый провайдер и контракт API для бэкенда.
 - `data/` — локальная H2 при запуске без Docker. В Compose данные хранятся в томе PostgreSQL; пользовательские файлы не сохраняются.
 - `backend/docs/` — [архитектура](backend/docs/architecture.md), состояние заявки и контракт API.
 
