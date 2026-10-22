@@ -20,13 +20,24 @@ services:
       DB_URL: jdbc:postgresql://db:5432/credit
       DB_USER: credit
       DB_PASSWORD: ${DB_PASSWORD:-local_demo_password}
-      MODEL_API_URL: ${MODEL_API_URL:-}
-      MODEL_API_TIMEOUT_SECONDS: ${MODEL_API_TIMEOUT_SECONDS:-30}
+      MODEL_API_URL: ${MODEL_API_URL:-http://inference:8090}
+      MODEL_API_TIMEOUT_SECONDS: ${MODEL_API_TIMEOUT_SECONDS:-70}
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
+      inference:
+        condition: service_healthy
+  inference:
+    build: ./inference
+    environment:
+      API_TOOKEN_CLUB: ${API_TOOKEN_CLUB:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://tooken.club/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-60}
+      OPENAI_MAX_COMPLETION_TOKENS: ${OPENAI_MAX_COMPLETION_TOKENS:-4096}
+    restart: unless-stopped
   web:
     build:
       context: ./frontend

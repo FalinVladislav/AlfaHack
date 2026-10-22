@@ -1,0 +1,563 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AlfaHack Internal AI Service",
+    "version": "1.0.0",
+    "description": "Internal backend API. No database access or action execution. Backend supplies authorized context and history. Request body limit: 128000 bytes. Do not expose publicly."
+  },
+  "servers": [
+    {
+      "url": "http://inference:8090",
+      "description": "Docker Compose"
+    },
+    {
+      "url": "http://localhost:8090",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "description": "Process liveness. configured reports configuration presence, not provider readiness.",
+        "responses": {
+          "200": {
+            "description": "Process is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat": {
+      "post": {
+        "operationId": "legacyChat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON or request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Empty body or body exceeds 128000 bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Provider error or invalid model response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing configuration, provider unavailable or rate limited, or service busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Provider timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/assist": {
+      "post": {
+        "operationId": "assist",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistRequest"
+              },
+              "example": {
+                "scenario": "growth_hypotheses",
+                "message": "How can I grow my coffee shop revenue?",
+                "context": {
+                  "business": {
+                    "industry": "coffee_shop",
+                    "locations": 1,
+                    "monthly_revenue_rub": 900000
+                  },
+                  "calculations": {
+                    "free_cash_flow_rub": 120000
+                  },
+                  "products": []
+                },
+                "history": [],
+                "available_actions": [
+                  {
+                    "action_id": "open_financing",
+                    "label": "Explore financing"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON or request fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Empty body or body exceeds 128000 bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Provider error or invalid model response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing configuration, provider unavailable or rate limited, or service busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Provider timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UP"
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "configured"
+        ]
+      },
+      "Action": {
+        "type": "object",
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "action_id",
+          "label"
+        ]
+      },
+      "HistoryMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": true
+      },
+      "Context": {
+        "type": "object",
+        "properties": {
+          "business": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "calculations": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            },
+            "maxItems": 100
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "Hypothesis": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "experiment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "success_metric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "title",
+          "rationale",
+          "experiment",
+          "success_metric"
+        ]
+      },
+      "ChatRequest": {
+        "type": "object",
+        "properties": {
+          "instructions": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64000
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          }
+        },
+        "required": [
+          "instructions",
+          "message"
+        ]
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "proposed_fields": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "intent",
+          "answer"
+        ]
+      },
+      "AssistRequest": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "growth_hypotheses",
+              "consultation",
+              "cash_gap",
+              "contract",
+              "documents",
+              "navigation",
+              "bureaucracy",
+              "staff_summary",
+              "onboarding",
+              "product_selection",
+              "reference"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "context": {
+            "$ref": "#/components/schemas/Context"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryMessage"
+            },
+            "maxItems": 30
+          },
+          "available_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "scenario",
+          "message"
+        ]
+      },
+      "AssistResponse": {
+        "type": "object",
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "growth_hypotheses",
+              "consultation",
+              "cash_gap",
+              "contract",
+              "documents",
+              "navigation",
+              "bureaucracy",
+              "staff_summary",
+              "onboarding",
+              "product_selection",
+              "reference"
+            ]
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 3
+          },
+          "hypotheses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Hypothesis"
+            },
+            "maxItems": 5
+          },
+          "product_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 100
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "scenario",
+          "answer",
+          "questions",
+          "hypotheses",
+          "product_ids",
+          "actions"
+        ]
+      }
+    }
+  }
+}
