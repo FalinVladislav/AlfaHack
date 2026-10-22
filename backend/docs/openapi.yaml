@@ -39,6 +39,33 @@ components:
       required: true
       schema: {type: string}
   schemas:
+    CreditGoal:
+      type: object
+      properties:
+        id: {type: string}
+        label: {type: string}
+        purpose: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}
+        product_ids: {type: array, items: {type: string}}
+    GoalResolution:
+      type: object
+      required: [status, choices]
+      properties:
+        status: {type: string, enum: [READY, NEEDS_CLARIFICATION, UNSUPPORTED]}
+        goal_id: {type: string}
+        goal_text: {type: string}
+        purpose: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}
+        purpose_label: {type: string}
+        product_ids: {type: array, items: {type: string}}
+        source: {type: string, enum: [CATALOG, LLM, RULES]}
+        question: {type: string}
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              purpose: {type: string}
+              label: {type: string}
+              product_ids: {type: array, items: {type: string}}
     FinancingLimits:
       type: object
       required: [status, purpose, products, amount_step, basis, note, policy_version]
@@ -145,6 +172,8 @@ components:
       type: object
       required: [expected_version]
       properties:
+        goal_id: {type: string, nullable: true, description: ID готовой цели или OTHER}
+        goal_text: {type: string, nullable: true, minLength: 5, maxLength: 500}
         expected_version: {type: integer}
         purpose: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}
         amount: {type: string, example: '3000000.00'}
@@ -352,6 +381,43 @@ paths:
       summary: Каталог учебных продуктов
       responses:
         '200': {$ref: '#/components/responses/ok'}
+  /financing/goals:
+    get:
+      summary: Готовые цели кредита и соответствующие продукты
+      responses:
+        '200':
+          description: Каталог целей клиента; OTHER отображается отдельным пунктом интерфейса
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/CreditGoal'}}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /financing/resolve-goal:
+    post:
+      summary: Сопоставить готовую цель или свободное описание с направлением кредитования
+      description: Не изменяет черновик. READY для свободного описания требует подтверждения пользователем. При неоднозначности возвращает вопрос без purpose. При недоступности модели используются консервативные правила и ручной выбор.
+      security: [{sessionCookie: [], csrfHeader: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                goal_id: {type: string, example: OTHER}
+                text: {type: string, minLength: 5, maxLength: 500}
+            examples:
+              predefined: {value: {goal_id: STOCK}}
+              freeText: {value: {goal_id: OTHER, text: 'Аренду нужно оплатить сейчас, а деньги от клиента придут через две недели'}}
+      responses:
+        '200':
+          description: Предложенное направление, вопрос или сообщение об отсутствии подходящего направления
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GoalResolution'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '422': {description: Неизвестная цель или описание не от 5 до 500 символов}
   /financing/limits:
     get:
       summary: Доступные диапазоны суммы и срока по типу кредита и данным своей компании

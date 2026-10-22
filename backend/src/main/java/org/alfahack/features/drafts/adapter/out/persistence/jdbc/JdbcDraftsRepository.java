@@ -55,14 +55,17 @@ public class JdbcDraftsRepository implements DraftsRepository {
         Integer durationDays,
         LocalDate neededBy,
         String productId,
+        String goalId,
+        String goalText,
         LocalDateTime updatedAt,
         String id,
         String companyId,
         Integer expectedVersion
     ) {
         return db.update(
-            "UPDATE drafts SET version=version+1,purpose=?,amount=?,term_months=?,duration_days=?,needed_by=?,product_id=?,updated_at=? WHERE id=? AND company_id=? AND version=? AND status='ACTIVE'",
-            purpose, amount, termMonths, durationDays, neededBy, productId, updatedAt, id, companyId, expectedVersion);
+            "UPDATE drafts SET version=version+1,purpose=?,amount=?,term_months=?,duration_days=?,needed_by=?,product_id=?,goal_id=?,goal_text=?,updated_at=? WHERE id=? AND company_id=? AND version=? AND status='ACTIVE'",
+            purpose, amount, termMonths, durationDays, neededBy, productId, goalId, goalText, updatedAt, id, companyId,
+            expectedVersion);
     }
 
     @Override

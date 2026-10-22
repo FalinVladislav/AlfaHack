@@ -22,6 +22,7 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
     private final DraftsRepository repository;
     private final ProductCatalog products;
     private final FinancingLimitUseCases limits;
+    private final org.alfahack.features.goals.port.GoalUseCases goals;
     private final LocalDate today;
 
     public Drafts(
@@ -29,12 +30,14 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
         DraftsRepository repository,
         ProductCatalog products,
         FinancingLimitUseCases limits,
+        org.alfahack.features.goals.port.GoalUseCases goals,
         String today
     ) {
         this.unitOfWork = unitOfWork;
         this.repository = repository;
         this.products = products;
         this.limits = limits;
+        this.goals = goals;
         this.today = LocalDate.parse(today);
     }
 
@@ -113,7 +116,18 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
                 months = null;
             else
                 days = null;
-            int changed = repository.updateVersion(purpose, amount, months, days, date, product, LocalDateTime.now(),
+            String goalId = body.containsKey("goal_id") ? Util.string(body, "goal_id") : (String) row.get("goal_id");
+            String goalText = body.containsKey("goal_text")
+                ? Util.string(body, "goal_text")
+                : (String) row.get("goal_text");
+            if (!java.util.Objects.equals(purpose, row.get("purpose")) && !body.containsKey("goal_id")
+                && !body.containsKey("goal_text")) {
+                goalId = null;
+                goalText = null;
+            }
+            goals.validate(goalId, goalText, purpose);
+            int changed = repository.updateVersion(purpose, amount, months, days, date, product, goalId, goalText,
+                LocalDateTime.now(),
                 id, user.company(), expected);
             if (changed != 1)
                 throw DomainException.conflict("DRAFT_VERSION_CONFLICT", "Черновик изменён. Обновите данные");
