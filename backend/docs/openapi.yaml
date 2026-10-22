@@ -39,6 +39,103 @@ components:
       required: true
       schema: {type: string}
   schemas:
+    FinancingLimits:
+      type: object
+      required: [status, purpose, products, amount_step, basis, note, policy_version]
+      properties:
+        status: {type: string, enum: [AVAILABLE, INSUFFICIENT_DATA, NO_CAPACITY]}
+        purpose: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}
+        amount_step: {type: integer, example: 1000}
+        basis: {type: object, additionalProperties: true, description: Обороты, долговые платежи, возраст и количество месяцев истории}
+        note: {type: string}
+        policy_version: {type: string}
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              name: {type: string}
+              term_unit: {type: string, enum: [DAYS, MONTHS]}
+              terms:
+                type: array
+                description: Точный перечень доступных сроков с диапазоном суммы для каждого; календарные ограничения могут оставлять пропуски
+                items:
+                  type: object
+                  properties:
+                    term: {type: integer}
+                    min_amount: {type: number}
+                    max_amount: {type: number}
+    HypothesisJob:
+      type: object
+      required: [id, status, message, updated_at, data_version]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [QUEUED, RUNNING, READY, EMPTY, PARTIAL, FAILED]}
+        message: {type: string}
+        updated_at: {type: string, format: date-time}
+        data_version: {type: string}
+    Hypothesis:
+      type: object
+      required: [id, title, status, rationale, evidence, assumptions, questions, experiment, success_metric, financing, explanation_source]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        status: {type: string, enum: [CALCULATED, NEEDS_DATA, EXPERIMENT_ONLY]}
+        highlight: {type: string}
+        rationale: {type: string}
+        evidence: {type: array, items: {type: object, additionalProperties: true}}
+        assumptions: {type: array, items: {type: string}}
+        questions: {type: array, items: {type: string}}
+        experiment: {type: string}
+        success_metric: {type: string}
+        explanation_source: {type: string, enum: [LLM, RULES]}
+        enrichment_status: {type: string, enum: [UNAVAILABLE]}
+        purpose: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}
+        amount: {type: number}
+        term_months: {type: integer}
+        duration_days: {type: integer}
+        needed_by: {type: string, format: date}
+        as_of: {type: string, format: date}
+        created_at: {type: string, format: date-time}
+        data_origin: {type: string}
+        stale: {type: boolean, description: Данные изменились; финансирование по старой версии приостановлено в UI}
+        financing:
+          type: object
+          properties:
+            status: {type: string, enum: [PRELIMINARY, NO_MATCH]}
+            note: {type: string}
+            options: {type: array, items: {$ref: '#/components/schemas/HypothesisFinancing'}}
+    HypothesisFinancing:
+      type: object
+      properties:
+        product_id: {type: string}
+        name: {type: string}
+        amount: {type: number}
+        annual_rate: {type: number, description: Доля единицы}
+        term: {type: integer}
+        term_unit: {type: string, enum: [DAYS, MONTHS]}
+        monthly_payment: {type: number}
+        total_repay: {type: number}
+        interest: {type: number}
+        assessment: {type: string, enum: [NOT_ASSESSED, PLAN_ONLY, PLAN_SHORTFALL]}
+        repayment_date: {type: string, format: date}
+        planned_balance_after_repayment: {type: number}
+    HypothesisList:
+      type: object
+      required: [job, cards]
+      properties:
+        job: {$ref: '#/components/schemas/HypothesisJob'}
+        cards: {type: array, items: {$ref: '#/components/schemas/Hypothesis'}}
+    HypothesisNotification:
+      type: object
+      required: [id, title, hypothesis_id, read, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        hypothesis_id: {type: string, format: uuid}
+        title: {type: string}
+        read: {type: boolean}
+        created_at: {type: string, format: date-time}
     Error:
       type: object
       properties:
@@ -169,9 +266,68 @@ paths:
         '200': {$ref: '#/components/responses/ok'}
   /insights:
     get:
-      summary: Сценарные рекомендации по синтетическим данным клиента
+      summary: Подборка гипотез — совместимый псевдоним GET /hypotheses
       responses:
-        '200': {$ref: '#/components/responses/ok'}
+        '200':
+          description: Готовые карточки и статус фонового задания
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HypothesisList'}
+  /hypotheses:
+    get:
+      summary: Получить гипотезы текущей компании и запустить обработку новой версии данных
+      description: Не ждёт LLM. Повторный запрос использует существующее задание для того же снимка. Пока QUEUED/RUNNING, опрашивайте раз в 3 секунды; после завершения — раз в 15 секунд для обнаружения изменений.
+      responses:
+        '200':
+          description: Карточки появляются по мере сохранения; EMPTY означает отсутствие обоснованных гипотез
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HypothesisList'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /hypotheses/refresh:
+    post:
+      summary: Повторить неудачное расширение гипотез или поставить новую версию данных в очередь
+      description: READY и EMPTY для неизменившихся данных повторно не генерируются. Повтор PARTIAL/FAILED не дублирует карточки и уведомления.
+      security: [{sessionCookie: [], csrfHeader: []}]
+      responses:
+        '202':
+          description: Текущее состояние задания после запроса обработки
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HypothesisList'}
+        '403': {$ref: '#/components/responses/Error'}
+  /hypotheses/{id}:
+    get:
+      summary: Объяснение гипотезы, исходные факты и предварительные кредитные варианты
+      parameters:
+        - {$ref: '#/components/parameters/id'}
+      responses:
+        '200':
+          description: Карточка своей компании, включая признак устаревших данных
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Hypothesis'}
+        '404': {description: Гипотеза не существует или принадлежит другой компании}
+  /notifications:
+    get:
+      summary: Последние 50 уведомлений о готовых гипотезах своей компании
+      responses:
+        '200':
+          description: Прочтение хранится отдельно для каждой учётной записи
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/HypothesisNotification'}}
+  /notifications/{id}/read:
+    post:
+      summary: Отметить уведомление прочитанным; повтор безопасен
+      security: [{sessionCookie: [], csrfHeader: []}]
+      parameters:
+        - {$ref: '#/components/parameters/id'}
+      responses:
+        '200': {description: Уведомление отмечено прочитанным}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {description: Уведомление не существует или принадлежит другой компании}
   /cashflow/summary:
     get:
       summary: Доходы и расходы за шесть завершённых месяцев
@@ -196,6 +352,23 @@ paths:
       summary: Каталог учебных продуктов
       responses:
         '200': {$ref: '#/components/responses/ok'}
+  /financing/limits:
+    get:
+      summary: Доступные диапазоны суммы и срока по типу кредита и данным своей компании
+      description: Предварительные демонстрационные ограничения; не являются одобрением. При отсутствии достаточной истории или доступного диапазона terms пуст. Расчёт котировки повторно проверяет ограничения и не создаёт quote_id вне диапазона (reason_code PERSONAL_LIMIT).
+      parameters:
+        - {name: purpose, in: query, required: true, schema: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}}
+        - {name: product_id, in: query, schema: {type: string}, description: Ограничить ответ одним продуктом соответствующего назначения}
+        - {name: needed_by, in: query, schema: {type: string, format: date}, description: Дата получения от завтрашней демодаты до 120 дней вперёд; по умолчанию завтра}
+      responses:
+        '200':
+          description: Точные диапазоны по каждому сроку и продукту
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FinancingLimits'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '422': {description: Неверные тип кредита, продукт или дата}
   /drafts:
     get:
       summary: Черновики своей компании

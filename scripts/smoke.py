@@ -55,6 +55,12 @@ class Client:
 
 
 def draft_and_submit(client, amount="3000000", purpose="EXPANSION", months=36, days=None):
+    limits = client.call("GET", "/financing/limits?purpose=" + purpose + "&needed_by=2026-10-22")
+    term = days if purpose == "CASH_GAP" else months
+    available = [float(bounds["max_amount"]) for product in limits["products"] for bounds in product["terms"]
+                 if bounds["term"] == term and float(bounds["min_amount"]) <= float(amount)]
+    assert available, (purpose, term, limits)
+    amount = str(min(float(amount), max(available)))
     draft = client.call("POST", "/drafts")
     draft = client.call("PATCH", "/drafts/" + draft["id"], {
         "expected_version": draft["version"], "purpose": purpose, "amount": amount,
@@ -78,7 +84,8 @@ saved_csrf = stable.csrf
 stable.csrf = "invalid-csrf"
 assert stable.call("POST", "/drafts", expected=403)["code"] == "CSRF"
 stable.csrf = saved_csrf
-assert len(stable.call("GET", "/insights")["cards"]) == 4
+insights = stable.call("GET", "/insights")
+assert isinstance(insights["cards"], list) and "status" in insights["job"]
 assert len(stable.call("GET", "/cashflow/summary")["months"]) == 6
 finance = stable.call("GET", "/finance/overview")
 assert finance["data_origin"] == "SYNTHETIC" and len(finance["months"]) == 6

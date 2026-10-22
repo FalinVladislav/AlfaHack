@@ -5,6 +5,7 @@ import java.util.Map;
 import org.alfahack.core.domain.User;
 import org.alfahack.features.auth.adapter.in.web.HttpAuth;
 import org.alfahack.features.insights.port.InsightUseCases;
+import org.alfahack.features.insights.port.HypothesisUseCases;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,13 +16,16 @@ public class InsightsController {
 
     private final HttpAuth auth;
     private final InsightUseCases insights;
+    private final HypothesisUseCases hypotheses;
 
     public InsightsController(
         HttpAuth auth,
-        InsightUseCases insights
+        InsightUseCases insights,
+        HypothesisUseCases hypotheses
     ) {
         this.auth = auth;
         this.insights = insights;
+        this.hypotheses = hypotheses;
     }
 
     private User user(
@@ -34,7 +38,7 @@ public class InsightsController {
     public Map<String, Object> insights(
         HttpServletRequest request
     ) {
-        return insights.insights(user(request));
+        return hypotheses.list(user(request));
     }
 
     @GetMapping("/cashflow/summary")

@@ -7,11 +7,12 @@ import Analytics from './pages/Analytics'
 import Loans from './pages/Loans'
 import FinancingWizard from './pages/FinancingWizard'
 import Applications from './pages/Applications'
+import Hypothesis from './pages/Hypothesis'
 
 function routeFromHash() {
   const [page = 'home', id = '', step = '1'] = location.hash.replace(/^#\/?/, '').split('/')
   return {
-    page: ['home', 'analytics', 'loans', 'financing', 'applications'].includes(page)
+    page: ['home', 'analytics', 'loans', 'financing', 'applications', 'hypothesis'].includes(page)
       ? page
       : 'home',
     id,
@@ -25,6 +26,8 @@ export default function App() {
   const [ready, setReady] = useState(false)
   const [finance, setFinance] = useState(null)
   const [insights, setInsights] = useState(null)
+  const [notifications, setNotifications] = useState([])
+  const [insightsError, setInsightsError] = useState('')
   const [dashboard, setDashboard] = useState(null)
   const [applications, setApplications] = useState([])
   const [initialNeed, setInitialNeed] = useState(null)
@@ -64,13 +67,58 @@ export default function App() {
     load(api('/applications'), setApplications)
     if (me.role === 'CLIENT') {
       load(api('/finance/overview'), setFinance)
-      load(api('/insights'), setInsights)
       load(api('/dashboard'), setDashboard)
     }
     return () => {
       active = false
     }
   }, [me, revision])
+
+  useEffect(() => {
+    if (me?.role !== 'CLIENT') return
+    let active = true
+    let timer
+    const controller = new AbortController()
+    async function poll() {
+      let delay = 15000
+      const results = await Promise.allSettled([
+        api('/hypotheses', { signal: controller.signal }),
+        api('/notifications', { signal: controller.signal }),
+      ])
+      if (!active) return
+      const [hypotheses, messages] = results
+      if (hypotheses.status === 'fulfilled') {
+        setInsights(hypotheses.value)
+        setInsightsError('')
+        if (['QUEUED', 'RUNNING'].includes(hypotheses.value.job.status)) delay = 3000
+      } else {
+        setInsightsError('Не удалось обновить гипотезы. Повторим автоматически.')
+      }
+      if (messages.status === 'fulfilled') setNotifications(messages.value)
+      timer = setTimeout(poll, delay)
+    }
+    poll()
+    return () => {
+      active = false
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [me, revision])
+
+  function openHypothesis(id) {
+    navigate('hypothesis/' + encodeURIComponent(id))
+    post('/notifications/' + encodeURIComponent(id) + '/read')
+      .then(() =>
+        setNotifications((items) =>
+          items.map((item) => (item.id === id ? { ...item, read: true } : item)),
+        ),
+      )
+      .catch(() => {})
+  }
+
+  async function retryHypotheses() {
+    await run(async () => setInsights(await post('/hypotheses/refresh')))
+  }
 
   function navigate(target) {
     location.hash = target
@@ -102,6 +150,8 @@ export default function App() {
       setFinance(null)
       setDashboard(null)
       setInsights(null)
+      setNotifications([])
+      setInsightsError('')
       setApplications([])
       setMe(user)
       navigate(user.role === 'STAFF' ? 'applications' : 'home')
@@ -114,6 +164,8 @@ export default function App() {
       setCsrf('')
       setMe(null)
       setFinance(null)
+      setInsights(null)
+      setNotifications([])
       setInitialNeed(null)
       navigate('home')
     })
@@ -139,7 +191,8 @@ export default function App() {
         amount: need.amount,
         term_months: days ? null : need.term_months,
         duration_days: days ? need.duration_days || need.term_months : null,
-        needed_by: neededBy.toISOString().slice(0, 10),
+        needed_by: need.needed_by || neededBy.toISOString().slice(0, 10),
+        product_id: need.product_id || null,
       })
       try {
         localStorage.setItem(`credit-goal:${me.key || me.account_key}:${saved.id}`, need.title)
@@ -166,6 +219,8 @@ export default function App() {
         applications={applications}
         finance={finance}
         busy={busy}
+        notifications={notifications}
+        onHypothesis={openHypothesis}
       />
       <main className="workspace" id="main-content">
         {error && (
@@ -184,6 +239,18 @@ export default function App() {
             onNavigate={navigate}
             onFinance={beginFinancing}
             busy={busy}
+            insightsError={insightsError}
+            onHypothesis={openHypothesis}
+            onRetryHypotheses={retryHypotheses}
+          />
+        )}
+        {page === 'hypothesis' && (
+          <Hypothesis
+            key={route.id}
+            id={route.id}
+            busy={busy}
+            onFinance={beginFinancing}
+            onNavigate={navigate}
           />
         )}
         {page === 'analytics' && (
@@ -228,7 +295,17 @@ export default function App() {
   )
 }
 
-function Header({ me, home, onNavigate, onLogout, applications, finance, busy }) {
+function Header({
+  me,
+  home,
+  onNavigate,
+  onLogout,
+  applications,
+  finance,
+  busy,
+  notifications,
+  onHypothesis,
+}) {
   const [popover, setPopover] = useState('')
   const ref = useRef(null)
   const actionable = applications.filter((application) =>
@@ -236,6 +313,7 @@ function Header({ me, home, onNavigate, onLogout, applications, finance, busy })
       application.status,
     ),
   )
+  const unread = notifications.filter((item) => !item.read).length
   useEffect(() => {
     const close = (event) => {
       if (!ref.current?.contains(event.target)) setPopover('')
@@ -271,12 +349,13 @@ function Header({ me, home, onNavigate, onLogout, applications, finance, busy })
       <div className="account">
         <button
           className="bell"
-          aria-label="Уведомления"
+          aria-label={`Уведомления${unread ? `, новых гипотез: ${unread}` : ''}`}
+          aria-controls="notifications-panel"
           aria-expanded={popover === 'notifications'}
           onClick={() => setPopover((value) => (value === 'notifications' ? '' : 'notifications'))}
         >
           <Icon name="bell" size={30} />
-          {actionable.length > 0 && <i />}
+          {(actionable.length > 0 || unread > 0) && <i />}
         </button>
         <span className="account-divider" />
         <button
@@ -316,20 +395,41 @@ function Header({ me, home, onNavigate, onLogout, applications, finance, busy })
         </div>
       )}
       {popover === 'notifications' && (
-        <div className="popover notifications">
+        <div
+          className="popover notifications"
+          id="notifications-panel"
+          role="region"
+          aria-label="Уведомления"
+        >
           <h3>Уведомления</h3>
-          {actionable.length ? (
-            actionable.slice(0, 4).map((application) => (
-              <button key={application.id} onClick={() => go('applications/' + application.id)}>
-                Заявка № {application.id.slice(0, 8).toUpperCase()}
-                <small>
-                  Открыть заявку <Icon name="arrow" size={14} />
-                </small>
-              </button>
-            ))
-          ) : (
-            <p>Новых действий по заявкам нет.</p>
-          )}
+          {notifications.map((item) => (
+            <button
+              key={item.id}
+              className={item.read ? '' : 'notification-unread'}
+              onClick={() => {
+                setPopover('')
+                onHypothesis(item.hypothesis_id)
+              }}
+            >
+              <small>
+                {item.read ? 'Гипотеза' : 'Новая гипотеза'} · {date(item.created_at)}
+              </small>
+              <span>{item.title}</span>
+              <small>
+                Посмотреть объяснение <Icon name="arrow" size={14} />
+              </small>
+            </button>
+          ))}
+          {actionable.length
+            ? actionable.slice(0, 4).map((application) => (
+                <button key={application.id} onClick={() => go('applications/' + application.id)}>
+                  Заявка № {application.id.slice(0, 8).toUpperCase()}
+                  <small>
+                    Открыть заявку <Icon name="arrow" size={14} />
+                  </small>
+                </button>
+              ))
+            : !notifications.length && <p>Новых уведомлений пока нет.</p>}
           {finance?.loans[0] && (
             <p>Ближайшее списание по кредиту — {date(finance.loans[0].next_payment_date)}.</p>
           )}

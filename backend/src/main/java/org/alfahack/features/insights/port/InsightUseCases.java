@@ -9,7 +9,4 @@ public interface InsightUseCases {
         User user
     );
 
-    Map<String, Object> insights(
-        User user
-    );
 }
