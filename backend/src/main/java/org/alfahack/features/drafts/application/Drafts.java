@@ -14,23 +14,27 @@ import org.alfahack.core.errors.DomainException;
 import org.alfahack.core.transaction.UnitOfWork;
 import org.alfahack.features.drafts.port.DraftsRepository;
 import org.alfahack.features.products.port.ProductCatalog;
+import org.alfahack.features.products.port.FinancingLimitUseCases;
 
 public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
 
     private final UnitOfWork unitOfWork;
     private final DraftsRepository repository;
     private final ProductCatalog products;
+    private final FinancingLimitUseCases limits;
     private final LocalDate today;
 
     public Drafts(
         UnitOfWork unitOfWork,
         DraftsRepository repository,
         ProductCatalog products,
+        FinancingLimitUseCases limits,
         String today
     ) {
         this.unitOfWork = unitOfWork;
         this.repository = repository;
         this.products = products;
+        this.limits = limits;
         this.today = LocalDate.parse(today);
     }
 
@@ -97,8 +101,14 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
             String product = body.containsKey("product_id")
                 ? Util.string(body, "product_id")
                 : (String) row.get("product_id");
-            if (product != null && !product.isBlank())
-                products.get(product);
+            if (product != null && !product.isBlank()) {
+                Product selected = products.get(product);
+                if (purpose != null && !selected.purpose().equals(purpose)) {
+                    if (body.containsKey("product_id"))
+                        throw DomainException.bad("PURPOSE_MISMATCH", "Продукт не соответствует типу кредита");
+                    product = null;
+                }
+            }
             if (purpose != null && purpose.equals("CASH_GAP"))
                 months = null;
             else
@@ -128,8 +138,11 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
         if (amount == null || purpose == null)
             throw DomainException.bad("INCOMPLETE_DRAFT", "Укажите цель и сумму");
         List<Map<String, Object>> options = new ArrayList<>();
+        var available = limits.limits(user, purpose, null, (LocalDate) d.get("needed_by"));
         for (Product p : products.catalog()) {
             String reason = products.reason(p, purpose, amount, months, days);
+            if (reason == null && !withinLimits(available, p.id(), amount, p.unit().equals("DAYS") ? days : months))
+                reason = "PERSONAL_LIMIT";
             if (reason == null && d.get("needed_by") != null
                 && ((LocalDate) d.get("needed_by")).isBefore(today.plusDays(1)))
                 reason = "TOO_LATE";
@@ -150,6 +163,27 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
             options.add(option);
         }
         return Map.of("draft_id", id, "draft_version", expected, "policy_version", "demo-v1", "options", options);
+    }
+
+    private boolean withinLimits(
+        Map<String, Object> available,
+        String product,
+        BigDecimal amount,
+        int term
+    ) {
+        for (Object item : (List<?>) available.get("products")) {
+            var p = (Map<?, ?>) item;
+            if (!product.equals(p.get("product_id")))
+                continue;
+            for (Object option : (List<?>) p.get("terms")) {
+                var bounds = (Map<?, ?>) option;
+                if (((Number) bounds.get("term")).intValue() == term
+                    && amount.compareTo(new BigDecimal(bounds.get("min_amount").toString())) >= 0
+                    && amount.compareTo(new BigDecimal(bounds.get("max_amount").toString())) <= 0)
+                    return true;
+            }
+        }
+        return false;
     }
 
     public Map<String, Object> quoteById(

@@ -21,15 +21,18 @@ export default function Dashboard({
   onNavigate,
   onFinance,
   busy,
+  insightsError,
+  onHypothesis,
+  onRetryHypotheses,
 }) {
   const [slide, setSlide] = useState(0)
   const hypothesisRef = useRef(null)
-  if (!finance || !insights) return <Loading />
+  if (!finance) return <Loading />
   const latest = finance.months.at(-1) || {}
   const previous = finance.months.at(-2) || {}
   const monthlyPayment = sum(finance.loans, 'monthly_payment')
   const load = Number(latest.income) ? monthlyPayment / Number(latest.income) : 0
-  const cards = insights.cards || []
+  const cards = insights?.cards || []
   const opportunity = cards[slide % Math.max(cards.length, 1)]
   const changeSlide = (delta) => setSlide((value) => (value + delta + cards.length) % cards.length)
   const pending = applications.filter(
@@ -133,7 +136,7 @@ export default function Dashboard({
           <Mascot kind="consultant" staticImage className="home-mascot" />
         </button>
       </section>
-      {opportunity && (
+      {opportunity ? (
         <section
           ref={hypothesisRef}
           className="hypothesis"
@@ -143,15 +146,15 @@ export default function Dashboard({
           onPointerCancel={resetHypothesis}
         >
           <div className="hyp-surface">
-            <button className="hyp-main" disabled={busy} onClick={() => onFinance(opportunity)}>
+            <button className="hyp-main" onClick={() => onHypothesis(opportunity.id)}>
               <h2>{opportunity.title}</h2>
-              <p>{opportunity.text}</p>
               <small>{opportunity.highlight}</small>
             </button>
             <button
               className="hyp-edge left"
               onClick={() => changeSlide(-1)}
               aria-label="Предыдущая возможность"
+              disabled={cards.length < 2}
             >
               ‹
             </button>
@@ -159,23 +162,40 @@ export default function Dashboard({
               className="hyp-edge right"
               onClick={() => changeSlide(1)}
               aria-label="Следующая возможность"
+              disabled={cards.length < 2}
             >
               ›
             </button>
-            <div className="slide-dots" aria-label={`Возможность ${slide + 1} из ${cards.length}`}>
+            <div
+              className="slide-dots"
+              aria-label={`Возможность ${(slide % cards.length) + 1} из ${cards.length}`}
+            >
               {cards.map((card, index) => (
                 <button
-                  key={card.title}
-                  className={index === slide ? 'selected' : ''}
+                  key={card.id}
+                  className={index === slide % cards.length ? 'selected' : ''}
                   onClick={() => setSlide(index)}
                   aria-label={`Возможность ${index + 1}`}
-                  aria-pressed={index === slide}
+                  aria-pressed={index === slide % cards.length}
                 />
               ))}
             </div>
           </div>
         </section>
+      ) : (
+        <div className="hypothesis" aria-hidden="true" />
       )}
+      <div className="hypothesis-progress" role="status" aria-live="polite">
+        {insightsError ||
+          (insights && !['READY', 'QUEUED', 'RUNNING'].includes(insights.job.status)
+            ? insights.job.message
+            : '')}
+        {['FAILED', 'PARTIAL'].includes(insights?.job.status) && (
+          <button className="text-link" disabled={busy} onClick={onRetryHypotheses}>
+            Повторить
+          </button>
+        )}
+      </div>
     </>
   )
 }

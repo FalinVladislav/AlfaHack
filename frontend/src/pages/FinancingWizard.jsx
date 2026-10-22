@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
 import { Empty, Icon, Loading, Progress, money, percent, purposes } from '../components/Ui'
+import { termTable, nearestTerm, normalizeFinancing, validFinancing } from '../financingLimits'
 
-function RangeField({ id, label, value, onChange, min, max, step = 1, unit }) {
+function RangeField({ id, label, value, onChange, onBlur, min, max, step = 1, unit, disabled }) {
   const fill = Math.max(0, Math.min(100, ((Number(value) - min) / Math.max(max - min, 1)) * 100))
   return (
     <div className="slider-card">
@@ -17,6 +18,8 @@ function RangeField({ id, label, value, onChange, min, max, step = 1, unit }) {
           step={step}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          disabled={disabled}
           aria-label={label}
         />
         <span>{unit}</span>
@@ -30,7 +33,8 @@ function RangeField({ id, label, value, onChange, min, max, step = 1, unit }) {
         step={step}
         value={Math.min(max, Math.max(min, Number(value) || min))}
         style={{ '--fill': `${fill}%` }}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(event.target.value, true)}
+        disabled={disabled || min === max}
       />
       <div className="range-labels">
         <span>{unit === '₽' ? money(min) : `${min} ${unit}`}</span>
@@ -59,7 +63,7 @@ export default function FinancingWizard({
     purpose: initialNeed?.purpose || 'EXPANSION',
     amount: initialNeed?.amount || 3000000,
     term_months: initialNeed?.term_months || 36,
-    duration_days: initialNeed?.term_months || 30,
+    duration_days: initialNeed?.duration_days || 30,
     needed_by: '',
   })
   const [quotes, setQuotes] = useState(null)
@@ -68,10 +72,79 @@ export default function FinancingWizard({
   const [quoteError, setQuoteError] = useState('')
   const [consent, setConsent] = useState(false)
   const [analysis, setAnalysis] = useState(null)
+  const [limitState, setLimitState] = useState(null)
+  const [limitsError, setLimitsError] = useState('')
   const sequence = useRef(0)
   const queue = useRef(Promise.resolve())
   const requestKey = useRef(null)
   const storageKey = (id) => `credit-goal:${me.key || me.account_key}:${id}`
+  const limitProduct = draft?.purpose === form.purpose ? draft?.product_id || '' : ''
+  const limitsKey = `${form.purpose}:${limitProduct}:${form.needed_by}`
+  const limitsReady = limitState?.key === limitsKey
+  const bounds = limitsReady ? termTable(limitState.data) : []
+  const days = form.purpose === 'CASH_GAP'
+  const currentTerm = days ? form.duration_days : form.term_months
+  const amountRange = nearestTerm(bounds, Number(currentTerm))
+  const eligibleTerms = bounds.filter(
+    (option) => Number(form.amount) >= option.min && Number(form.amount) <= option.max,
+  )
+  const termRange = eligibleTerms.length ? eligibleTerms : bounds
+  const minAmount = amountRange?.min || 0
+  const maxAmount = amountRange?.max || 0
+  const minTerm = termRange[0]?.term || 0
+  const maxTerm = termRange.at(-1)?.term || 0
+  const parametersValid = limitsReady && validFinancing(bounds, form.amount, currentTerm)
+
+  function normalizeParameters() {
+    if (!limitsReady) return
+    const normalized = normalizeFinancing(
+      bounds,
+      form.amount,
+      currentTerm,
+      limitState.data.amount_step,
+    )
+    if (normalized)
+      setForm((previous) => ({
+        ...previous,
+        amount: normalized.amount,
+        [days ? 'duration_days' : 'term_months']: normalized.term,
+      }))
+  }
+
+  useEffect(() => {
+    if (!finance || !form.needed_by || loading) return
+    const controller = new AbortController()
+    setLimitState(null)
+    setLimitsError('')
+    const query = new URLSearchParams({ purpose: form.purpose, needed_by: form.needed_by })
+    if (limitProduct) query.set('product_id', limitProduct)
+    api('/financing/limits?' + query, { signal: controller.signal })
+      .then((data) => {
+        if (controller.signal.aborted) return
+        setLimitState({ key: limitsKey, data })
+        if (document.activeElement?.matches('#credit-amount, #credit-term')) return
+        setForm((previous) => {
+          const normalized = normalizeFinancing(
+            termTable(data),
+            previous.amount,
+            previous.purpose === 'CASH_GAP' ? previous.duration_days : previous.term_months,
+            data.amount_step,
+          )
+          return normalized
+            ? {
+                ...previous,
+                amount: normalized.amount,
+                [previous.purpose === 'CASH_GAP' ? 'duration_days' : 'term_months']:
+                  normalized.term,
+              }
+            : previous
+        })
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) setLimitsError(reason.message)
+      })
+    return () => controller.abort()
+  }, [limitsKey, finance, loading])
 
   useEffect(() => {
     if (!draftId) {
@@ -82,7 +155,7 @@ export default function FinancingWizard({
         purpose: initialNeed?.purpose || 'EXPANSION',
         amount: initialNeed?.amount || 3000000,
         term_months: initialNeed?.term_months || 36,
-        duration_days: initialNeed?.term_months || 30,
+        duration_days: initialNeed?.duration_days || 30,
       }))
       return
     }
@@ -136,6 +209,18 @@ export default function FinancingWizard({
     requestKey.current = null
     if (step !== 2 || !draftId || loading || draft?.id !== draftId || draft.status !== 'ACTIVE')
       return
+    if (!parametersValid) {
+      setCalculating(false)
+      setQuoteError(
+        limitsError ||
+          (!limitsReady
+            ? 'Уточняем доступный диапазон…'
+            : !bounds.length
+              ? limitState.data.note
+              : `Укажите сумму от ${money(minAmount)} до ${money(maxAmount)} и доступный срок.`),
+      )
+      return
+    }
     if (
       !Number(form.amount) ||
       !Number(form.purpose === 'CASH_GAP' ? form.duration_days : form.term_months) ||
@@ -168,7 +253,13 @@ export default function FinancingWizard({
             if (current !== sequence.current) return
             setDraft(saved)
             setQuotes(result)
-            setSelected(result.options.find((option) => option.quote_id)?.quote_id || '')
+            setSelected(
+              result.options.find(
+                (option) => option.quote_id && option.product_id === saved.product_id,
+              )?.quote_id ||
+                result.options.find((option) => option.quote_id)?.quote_id ||
+                '',
+            )
           } catch (reason) {
             if (current === sequence.current) setQuoteError(reason.message)
           } finally {
@@ -190,6 +281,8 @@ export default function FinancingWizard({
     form.term_months,
     form.duration_days,
     form.needed_by,
+    limitState,
+    limitsError,
   ])
 
   async function continueToCalculation(event) {
@@ -244,12 +337,6 @@ export default function FinancingWizard({
         Вы можете следить за решением в разделе заявок.
       </Empty>
     )
-  const products = finance.products.filter((product) => product.type === form.purpose)
-  const days = form.purpose === 'CASH_GAP'
-  const minAmount = Math.min(...products.map((product) => Number(product.min_amount)))
-  const maxAmount = Math.max(...products.map((product) => Number(product.max_amount)))
-  const minTerm = Math.min(...products.map((product) => product.min_term))
-  const maxTerm = Math.max(...products.map((product) => product.max_term))
   const chosen = quotes?.options.find((option) => option.quote_id && option.quote_id === selected)
   const tomorrow = new Date(dashboard.demo_today + 'T12:00:00')
   tomorrow.setDate(tomorrow.getDate() + 1)
@@ -305,8 +392,10 @@ export default function FinancingWizard({
               value={form.amount}
               min={minAmount}
               max={maxAmount}
-              step={10000}
+              step={limitState?.data.amount_step || 1000}
               unit="₽"
+              disabled={!bounds.length}
+              onBlur={normalizeParameters}
               onChange={(value) => setForm((previous) => ({ ...previous, amount: value }))}
             />
             <RangeField
@@ -316,10 +405,14 @@ export default function FinancingWizard({
               min={minTerm}
               max={maxTerm}
               unit={days ? 'дней' : 'мес.'}
-              onChange={(value) =>
+              disabled={!bounds.length}
+              onBlur={normalizeParameters}
+              onChange={(value, slider) =>
                 setForm((previous) => ({
                   ...previous,
-                  [days ? 'duration_days' : 'term_months']: value,
+                  [days ? 'duration_days' : 'term_months']: slider
+                    ? (nearestTerm(eligibleTerms, Number(value))?.term ?? value)
+                    : value,
                 }))
               }
             />
@@ -330,6 +423,11 @@ export default function FinancingWizard({
                   id="needed-by"
                   type="date"
                   min={tomorrow.toISOString().slice(0, 10)}
+                  max={new Date(
+                    new Date(dashboard.demo_today + 'T12:00:00Z').getTime() + 120 * 86400000,
+                  )
+                    .toISOString()
+                    .slice(0, 10)}
                   value={form.needed_by}
                   onChange={(event) =>
                     setForm((previous) => ({ ...previous, needed_by: event.target.value }))
@@ -337,7 +435,8 @@ export default function FinancingWizard({
                 />
               </label>
               <span className="data-note">
-                Условия рассчитываются по действующим продуктам. Решение — после проверки бизнеса.
+                {limitsError ||
+                  (limitsReady ? limitState.data.note : 'Уточняем доступный диапазон…')}
               </span>
             </div>
             <div className="calculation-status" role="status">

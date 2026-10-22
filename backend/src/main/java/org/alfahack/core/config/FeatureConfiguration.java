@@ -44,6 +44,29 @@ import org.springframework.context.annotation.Configuration;
 public class FeatureConfiguration {
 
     @Bean
+    org.alfahack.features.insights.port.HypothesisModel hypothesisModel(
+        @Value("${app.model-api.url}") String url,
+        @Value("${app.model-api.timeout-seconds}") int timeout,
+        JsonCodec json
+    ) {
+        return new org.alfahack.features.insights.adapter.out.http.HttpHypothesisModel(url, timeout, json);
+    }
+
+    @Bean
+    org.alfahack.features.insights.port.HypothesisUseCases hypotheses(
+        org.alfahack.features.insights.port.HypothesisRepository repository,
+        org.alfahack.features.finance.port.FinanceUseCases finance,
+        ForecastUseCases forecast,
+        ProductCatalog products,
+        org.alfahack.features.insights.port.HypothesisModel model,
+        JsonCodec json,
+        @Value("${app.demo-today}") String today
+    ) {
+        return new org.alfahack.features.insights.application.Hypotheses(repository, finance, forecast, products, model,
+            json, today);
+    }
+
+    @Bean
     org.alfahack.features.finance.port.FinanceUseCases finance(
         org.alfahack.features.finance.port.FinanceRepository repository
     ) {
@@ -83,13 +106,24 @@ public class FeatureConfiguration {
     }
 
     @Bean
+    org.alfahack.features.products.port.FinancingLimitUseCases financingLimits(
+        org.alfahack.features.finance.port.FinanceUseCases finance,
+        ForecastUseCases forecast,
+        ProductCatalog products,
+        @Value("${app.demo-today}") String today
+    ) {
+        return new org.alfahack.features.products.application.FinancingLimits(finance, forecast, products, today);
+    }
+
+    @Bean
     DraftUseCases drafts(
         UnitOfWork transactions,
         DraftsRepository repository,
         ProductCatalog products,
+        org.alfahack.features.products.port.FinancingLimitUseCases limits,
         @Value("${app.demo-today}") String today
     ) {
-        return new Drafts(transactions, repository, products, today);
+        return new Drafts(transactions, repository, products, limits, today);
     }
 
     @Bean

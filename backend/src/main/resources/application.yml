@@ -23,4 +23,7 @@ app:
   secure-cookie: ${SECURE_COOKIE:false}
   model-api:
     url: ${MODEL_API_URL:}
-    timeout-seconds: ${MODEL_API_TIMEOUT_SECONDS:30}
+    timeout-seconds: ${MODEL_API_TIMEOUT_SECONDS:70}
+  insights:
+    worker-enabled: ${INSIGHTS_WORKER_ENABLED:true}
+    poll-millis: 2000
