@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
+import GoalPicker from '../components/GoalPicker'
 import { Empty, Icon, Loading, Progress, money, percent, purposes } from '../components/Ui'
 import { termTable, nearestTerm, normalizeFinancing, validFinancing } from '../financingLimits'
 
@@ -174,7 +175,8 @@ export default function FinancingWizard({
         })
         try {
           setGoal(
-            localStorage.getItem(storageKey(value.id)) ||
+            value.goal_text ||
+              localStorage.getItem(storageKey(value.id)) ||
               initialNeed?.title ||
               purposes[value.purpose] ||
               '',
@@ -285,22 +287,31 @@ export default function FinancingWizard({
     limitsError,
   ])
 
-  async function continueToCalculation(event) {
-    event.preventDefault()
+  async function continueToCalculation(selection) {
     await run(async () => {
       const base = draft || (await post('/drafts'))
+      const selectedPurpose = selection.purpose
+      const nextForm = { ...form, purpose: selectedPurpose, product_id: null }
+      if (selectedPurpose !== form.purpose) {
+        nextForm.term_months = selectedPurpose === 'WORKING_CAPITAL' ? 12 : 36
+        nextForm.duration_days = 30
+      }
       const saved = await patch('/drafts/' + base.id, {
         expected_version: base.version,
-        ...form,
-        term_months: form.purpose === 'CASH_GAP' ? null : Number(form.term_months),
-        duration_days: form.purpose === 'CASH_GAP' ? Number(form.duration_days) : null,
+        ...nextForm,
+        goal_id: selection.goal_id,
+        goal_text: selection.goal_text,
+        term_months: selectedPurpose === 'CASH_GAP' ? null : Number(nextForm.term_months),
+        duration_days: selectedPurpose === 'CASH_GAP' ? Number(nextForm.duration_days) : null,
       })
       try {
-        localStorage.setItem(storageKey(saved.id), goal.trim())
+        localStorage.setItem(storageKey(saved.id), selection.goal_text)
       } catch {
         /* Saving the description is optional. */
       }
       setDraft(saved)
+      setGoal(selection.goal_text)
+      setForm(nextForm)
       onNavigate(`financing/${saved.id}/2`)
     })
   }
@@ -352,27 +363,7 @@ export default function FinancingWizard({
               <br />
               вложить деньги?
             </h1>
-            <form onSubmit={continueToCalculation}>
-              <div className="textarea-wrap">
-                <label className="sr-only" htmlFor="credit-goal">
-                  Цель кредита
-                </label>
-                <textarea
-                  id="credit-goal"
-                  maxLength={500}
-                  value={goal}
-                  onChange={(event) => setGoal(event.target.value)}
-                  placeholder="Например: мне нужно новое оборудование, чтобы выполнять больше заказов."
-                  required
-                  minLength={5}
-                />
-                <span className="counter">{goal.length}/500</span>
-              </div>
-              <button className="primary full" disabled={busy || goal.trim().length < 5}>
-                Далее
-                <Icon name="arrow" />
-              </button>
-            </form>
+            <GoalPicker initialGoal={goal} busy={busy} onConfirm={continueToCalculation} />
           </div>
           <Mascot kind="consultant" className="stage-mascot" />
         </section>

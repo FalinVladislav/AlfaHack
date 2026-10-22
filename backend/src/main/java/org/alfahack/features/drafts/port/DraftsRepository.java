@@ -30,6 +30,8 @@ public interface DraftsRepository {
         Integer durationDays,
         LocalDate neededBy,
         String productId,
+        String goalId,
+        String goalText,
         LocalDateTime updatedAt,
         String id,
         String companyId,

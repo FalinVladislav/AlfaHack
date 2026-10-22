@@ -44,6 +44,14 @@ import org.springframework.context.annotation.Configuration;
 public class FeatureConfiguration {
 
     @Bean
+    org.alfahack.features.goals.port.GoalUseCases goals(
+        ProductCatalog products,
+        LanguageModel model
+    ) {
+        return new org.alfahack.features.goals.application.GoalSelection(products, model);
+    }
+
+    @Bean
     org.alfahack.features.insights.port.HypothesisModel hypothesisModel(
         @Value("${app.model-api.url}") String url,
         @Value("${app.model-api.timeout-seconds}") int timeout,
@@ -121,9 +129,10 @@ public class FeatureConfiguration {
         DraftsRepository repository,
         ProductCatalog products,
         org.alfahack.features.products.port.FinancingLimitUseCases limits,
+        org.alfahack.features.goals.port.GoalUseCases goals,
         @Value("${app.demo-today}") String today
     ) {
-        return new Drafts(transactions, repository, products, limits, today);
+        return new Drafts(transactions, repository, products, limits, goals, today);
     }
 
     @Bean
