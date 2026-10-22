@@ -8,8 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.core.annotation.Order;
 
 @Component
+@Order(0)
 public class SeedData implements CommandLineRunner {
 
     private final JdbcTemplate db;
@@ -34,9 +36,10 @@ public class SeedData implements CommandLineRunner {
             seedCredentials();
             return;
         }
-        db.update("INSERT INTO companies VALUES (?,?,?)", "STABLE", "Кофейня Вторая чашка",
+        db.update("INSERT INTO companies(id,name,balance) VALUES (?,?,?)", "STABLE", "Кофейня Вторая чашка",
             new BigDecimal("800000.00"));
-        db.update("INSERT INTO companies VALUES (?,?,?)", "GAP", "Мастерская Горизонт", new BigDecimal("480000.00"));
+        db.update("INSERT INTO companies(id,name,balance) VALUES (?,?,?)", "GAP", "Мастерская Горизонт",
+            new BigDecimal("480000.00"));
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "stable", "CLIENT", "STABLE", "Кофейня Вторая чашка");
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "gap", "CLIENT", "GAP", "Мастерская Горизонт");
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "staff", "STAFF", null, "Кредитный специалист");

@@ -54,6 +54,11 @@ components:
       type: object
       additionalProperties: true
   responses:
+    Error:
+      description: Ошибка авторизации или доступа
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
     ok:
       description: Серверное состояние объекта или результат действия
       content:
@@ -67,6 +72,53 @@ components:
 security:
   - sessionCookie: []
 paths:
+  /finance/overview:
+    get:
+      summary: Финансовый профиль компании, операции, остатки и синтетические потребности
+      description: Только для клиента. Данные ограничены компанией текущей сессии. months содержит доходы, расходы и чистый поток по завершённым месяцам.
+      responses:
+        '200':
+          description: Финансовая сводка
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  company: {type: object}
+                  months: {type: array, items: {type: object}}
+                  transactions: {type: array, items: {type: object}}
+                  balances: {type: array, items: {type: object}}
+                  loans: {type: array, items: {type: object}}
+                  products: {type: array, items: {type: object}}
+                  needs: {type: array, items: {type: object}}
+                  data_origin: {type: string, enum: [SYNTHETIC]}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /finance/loans:
+    get:
+      summary: Действующие обязательства и кредиты, выданные через кабинет
+      description: Сортировка по ближайшему списанию. source различает EXISTING и ISSUED. end_date рассчитывается от даты фактической выдачи; для старой записи без события выдачи может отсутствовать.
+      responses:
+        '200':
+          description: Кредиты компании
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: string}
+                    company_id: {type: string}
+                    name: {type: string}
+                    remaining_debt: {type: number}
+                    monthly_payment: {type: number}
+                    rate: {type: number}
+                    next_payment_date: {type: string, format: date}
+                    end_date: {type: string, format: date}
+                    source: {type: string, enum: [EXISTING, ISSUED]}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
   /auth/sessions:
     post:
       summary: Вход по логину и паролю

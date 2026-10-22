@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Маскоты — проверка прозрачного видео</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; font-family: Arial, sans-serif; background: #f3f4f6; color: #202124; }
+      h1 { margin: 0 0 12px; font-size: 28px; }
+      p { color: #63666d; line-height: 1.5; }
+      nav { display: flex; gap: 10px; margin: 24px 0; }
+      button { border: 1px solid #d3d5dc; border-radius: 10px; padding: 12px 18px; font: inherit; cursor: pointer; background: white; }
+      button[aria-pressed="true"] { border-color: #8052dc; outline: 2px solid #8052dc; }
+      main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+      article { min-width: 0; }
+      h2 { font-size: 18px; margin: 0 0 12px; }
+      .stage { border-radius: 16px; overflow: hidden; background-color: #fff; background-image: conic-gradient(#dfe1e6 25%, transparent 0 50%, #dfe1e6 0 75%, transparent 0); background-size: 24px 24px; }
+      video { display: block; width: 100%; height: min(65vh, 640px); object-fit: contain; }
+      body[data-background="white"] .stage { background: #fff; }
+      body[data-background="dark"] .stage { background: #22252d; }
+      body[data-background="lilac"] .stage { background: #ddd7fa; }
+      a { display: inline-block; margin-top: 12px; color: #6340a2; }
+    </style>
+  </head>
+  <body data-background="checker">
+    <h1>Маскоты без фона</h1>
+    <p>Готовые WebM с прозрачностью, 720 × 1080, 24 кадра/с. Фон ниже принадлежит странице, а не видео. Удаление фона при просмотре не выполняется.</p>
+    <nav aria-label="Фон для проверки">
+      <button data-background="checker" aria-pressed="true">Шахматный</button>
+      <button data-background="white" aria-pressed="false">Белый</button>
+      <button data-background="dark" aria-pressed="false">Тёмный</button>
+      <button data-background="lilac" aria-pressed="false">Как в приложении</button>
+    </nav>
+    <main>
+      <article>
+        <h2>Manager — экран входа</h2>
+        <div class="stage"><video src="manager-transparent.webm" controls autoplay muted loop playsinline></video></div>
+        <a href="manager-transparent.webm" download>Скачать видео</a>
+      </article>
+      <article>
+        <h2>Kons — ввод цели</h2>
+        <div class="stage"><video src="consultant-transparent.webm" controls autoplay muted loop playsinline></video></div>
+        <a href="consultant-transparent.webm" download>Скачать видео</a>
+      </article>
+      <article>
+        <h2>Guide — расчёт условий</h2>
+        <div class="stage"><video src="guide-transparent.webm" controls autoplay muted loop playsinline></video></div>
+        <a href="guide-transparent.webm" download>Скачать видео</a>
+      </article>
+    </main>
+    <script>
+      document.querySelectorAll('button[data-background]').forEach(button => {
+        button.addEventListener('click', () => {
+          document.body.dataset.background = button.dataset.background;
+          document.querySelectorAll('button[data-background]').forEach(item => {
+            item.setAttribute('aria-pressed', String(item === button));
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -44,6 +44,13 @@ import org.springframework.context.annotation.Configuration;
 public class FeatureConfiguration {
 
     @Bean
+    org.alfahack.features.finance.port.FinanceUseCases finance(
+        org.alfahack.features.finance.port.FinanceRepository repository
+    ) {
+        return new org.alfahack.features.finance.application.Finance(repository);
+    }
+
+    @Bean
     AuthUseCases auth(
         AuthRepository repository
     ) {
