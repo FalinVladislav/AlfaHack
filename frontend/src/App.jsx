@@ -139,7 +139,7 @@ export default function App() {
         amount: need.amount,
         term_months: days ? null : need.term_months,
         duration_days: days ? need.duration_days || need.term_months : null,
-        needed_by: neededBy.toISOString().slice(0, 10),
+        needed_by: need.needed_by || neededBy.toISOString().slice(0, 10),
       })
       try {
         localStorage.setItem(`credit-goal:${me.key || me.account_key}:${saved.id}`, need.title)
@@ -180,6 +180,7 @@ export default function App() {
           <Dashboard
             finance={finance}
             insights={insights}
+            dashboard={dashboard}
             applications={applications}
             onNavigate={navigate}
             onFinance={beginFinancing}

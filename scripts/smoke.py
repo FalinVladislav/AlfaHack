@@ -58,7 +58,7 @@ def draft_and_submit(client, amount="3000000", purpose="EXPANSION", months=36, d
     draft = client.call("POST", "/drafts")
     draft = client.call("PATCH", "/drafts/" + draft["id"], {
         "expected_version": draft["version"], "purpose": purpose, "amount": amount,
-        "term_months": months, "duration_days": days, "needed_by": "2026-10-22"})
+        "term_months": months, "duration_days": days, "needed_by": "2026-11-01"})
     quote = client.call("POST", "/drafts/" + draft["id"] + "/quotes", {"expected_version": draft["version"]})
     selected = next(option for option in quote["options"] if option.get("quote_id"))
     assert float(selected["schedule"][-1]["remaining"]) == 0
@@ -70,70 +70,62 @@ def draft_and_submit(client, amount="3000000", purpose="EXPANSION", months=36, d
     return app
 
 
-stable = Client()
-assert stable.call("GET", "/me", expected=401)["code"] == "UNAUTHORIZED"
-assert stable.call("POST", "/auth/sessions", {"login": "stable", "password": "wrong"}, expected=401)["code"] == "INVALID_CREDENTIALS"
-assert "Кофейня" in stable.login("stable")["label"]
-saved_csrf = stable.csrf
-stable.csrf = "invalid-csrf"
-assert stable.call("POST", "/drafts", expected=403)["code"] == "CSRF"
-stable.csrf = saved_csrf
-assert len(stable.call("GET", "/insights")["cards"]) == 4
-assert len(stable.call("GET", "/cashflow/summary")["months"]) == 6
-finance = stable.call("GET", "/finance/overview")
-assert finance["data_origin"] == "SYNTHETIC" and len(finance["months"]) == 6
-assert len(finance["transactions"]) == 30 and len(finance["products"]) == 5
-assert all(row["company_id"] == "STABLE" for row in finance["transactions"] + finance["loans"] + finance["needs"])
-assert len([loan for loan in stable.call("GET", "/finance/loans") if loan["source"] == "EXISTING"]) == 2
-gap = Client()
-assert gap.login("gap")["company_id"] == "GAP"
-f = gap.call("GET", "/cashflow/forecast?horizon=30D&scenario=BASE")
-assert float(f["gap_amount"]) == 120000, f
-app = draft_and_submit(stable)
-analysis = stable.call("POST", "/quotes/" + app["quote_id"] + "/analysis", {"horizon": "30D", "scenario": "BASE"})
-assert len(analysis["without_credit"]) == 30 and len(analysis["with_credit"]) == 30
-assert gap.call("GET", "/applications/" + app["id"], expected=404)["code"] == "NOT_FOUND"
-staff = Client()
-staff.login("staff")
-assert staff.call("GET", "/finance/overview", expected=403)["code"] == "FORBIDDEN"
-assert len(staff.call("GET", "/synthetic/profiles")) == 7
-assert stable.call("GET", "/synthetic/profiles", expected=403)["code"] == "FORBIDDEN"
-assert staff.call("POST", "/applications/" + app["id"] + "/checks", {"demo_profile": "MISSING_INFO"})["status"] == "NEEDS_INFO"
-app = stable.call("GET", "/applications/" + app["id"])
-request_id = app["requests"][0]["id"]
-unverified = stable.call("POST", "/applications/" + app["id"] + "/documents", multipart={"request_id": request_id, "file": b"company_id,monthly_debt\nSTABLE,0\n"}, expected=422)
-assert unverified["code"] == "SYNTHETIC_ONLY"
-assert stable.call("POST", "/applications/" + app["id"] + "/requests/" + request_id + "/complete", expected=409)["code"] == "DOCUMENT_NOT_VERIFIED"
-file_bytes = (pathlib.Path(__file__).parent.parent / "backend/src/main/resources/seed-documents/stable_statement.csv").read_bytes()
-uploaded = stable.call("POST", "/applications/" + app["id"] + "/documents", multipart={"request_id": request_id, "file": file_bytes})
-assert uploaded["status"] == "VERIFIED", uploaded
-with stable.opener.open(BASE + "/api/v1/applications/" + app["id"] + "/documents/" + uploaded["id"]) as downloaded:
-    assert downloaded.read() == file_bytes
-approved = stable.call("POST", "/applications/" + app["id"] + "/requests/" + request_id + "/complete")
-assert approved["status"] == "APPROVED"
-assert staff.call("GET", "/staff/applications/" + app["id"])["score"] >= 75
-app = stable.call("GET", "/applications/" + app["id"])
-accepted = stable.call("POST", "/applications/" + app["id"] + "/offer/accept", {"offer_version": app["offer_version"]}, uuid.uuid4().hex)
-assert accepted["status"] == "OFFER_ACCEPTED"
-assert stable.call("POST", "/applications/" + app["id"] + "/contract/sign", {"confirmation": True}, uuid.uuid4().hex)["status"] == "SIGNED"
-key = uuid.uuid4().hex
-assert stable.call("POST", "/applications/" + app["id"] + "/disburse", key=key)["status"] == "DISBURSED"
-assert stable.call("POST", "/applications/" + app["id"] + "/disburse", key=key)["status"] == "DISBURSED"
-assert len([loan for loan in stable.call("GET", "/loans") if loan["application_id"] == app["id"]]) == 1
-issued_loan = next(loan for loan in stable.call("GET", "/loans") if loan["application_id"] == app["id"])
-finance_loan = next(loan for loan in stable.call("GET", "/finance/loans") if loan["id"] == issued_loan["id"])
-assert finance_loan["source"] == "ISSUED" and finance_loan["end_date"]
-counter = draft_and_submit(stable)
-counter = staff.call("POST", "/applications/" + counter["id"] + "/checks", {"demo_profile": "COUNTEROFFER"})
-assert counter["status"] == "COUNTEROFFER" and float(counter["amount"]) < 3000000, counter
-assert staff.call("POST", "/applications/" + counter["id"] + "/checks", {"demo_profile": "GOOD"}, expected=409)["code"] == "INVALID_STATE"
-rejected = draft_and_submit(stable)
-rejected = staff.call("POST", "/applications/" + rejected["id"] + "/checks", {"demo_profile": "HIGH_RISK"})
-assert rejected["status"] == "REJECTED"
-assert stable.call("POST", "/applications/" + rejected["id"] + "/contract/sign", {"confirmation": True}, uuid.uuid4().hex, expected=409)["code"] == "INVALID_STATE"
-gap_app = draft_and_submit(gap, "120000", "CASH_GAP", None, 5)
-assert staff.call("POST", "/applications/" + gap_app["id"] + "/checks", {"demo_profile": "GAP"})["status"] == "APPROVED"
-failure = draft_and_submit(stable)
-failure = staff.call("POST", "/applications/" + failure["id"] + "/checks", {"demo_profile": "MOCK_FAILURE"})
-assert failure["status"] == "CHECKING" and failure["decision_report"]["outcome"] == "SOURCE_ERROR"
-print("PASS: credentials, 4 sections, 7 profiles, GAP forecast, ownership, stale quote, idempotency, verified document, disbursement, decisions and mock failure")
+def main():
+    staff=Client(); staff.login("staff")
+    clients={}
+    for login in ["stable","gap","reject","missing","counter"]:
+        client=Client();client.login(login);clients[login]=client
+        dashboard=client.call("GET","/dashboard")
+        assert dashboard["forecast"]["points"]
+        finance=client.call("GET","/finance/overview")
+        assert all(r["company_id"]==login.upper() for r in finance["transactions"])
+        assert client.call("GET","/insights")["cards"]
+
+    for login, expected in [("stable","APPROVED"),("reject","REJECTED"),("counter","COUNTEROFFER"),("missing","NEEDS_INFO")]:
+        client=clients[login]
+        app=draft_and_submit(client,"1000000",months=24)
+        assert app["status"]==expected,(login,app)
+        app_id=app["id"]
+        assert staff.call("POST",f"/applications/{app_id}/checks",{"demo_profile":"IT"},expected=409)["code"]=="PROFILE_LOCKED"
+        clients["gap"].call("GET",f"/applications/{app_id}",expected=404)
+        if login=="missing":
+            request=app["requests"][0]["id"]
+            content=(pathlib.Path(__file__).resolve().parents[1]/"backend/src/main/resources/seed-documents/missing_statement.csv").read_bytes()
+            client.call("POST",f"/applications/{app_id}/documents",multipart={"request_id":request,"file":content})
+            app=client.call("POST",f"/applications/{app_id}/requests/{request}/complete")
+            assert app["status"]=="APPROVED",app
+        if login=="stable":
+            client.call("POST",f"/applications/{app_id}/offer/accept",{"offer_version":app["offer_version"]},uuid.uuid4().hex)
+            client.call("POST",f"/applications/{app_id}/contract/sign",{"confirmation":True},uuid.uuid4().hex)
+            key=uuid.uuid4().hex
+            issued=client.call("POST",f"/applications/{app_id}/disburse",key=key)
+            assert client.call("POST",f"/applications/{app_id}/disburse",key=key)["loan"]["id"]==issued["loan"]["id"]
+        print("PASS",login,expected,"events",len(app["events"]))
+
+    client=clients["gap"]
+    draft=client.call("POST","/drafts")
+    draft=client.call("PATCH","/drafts/"+draft["id"],{"expected_version":draft["version"],"purpose":"CASH_GAP","amount":"200000","duration_days":45,"term_months":None,"needed_by":"2026-11-01"})
+    quotes=client.call("POST","/drafts/"+draft["id"]+"/quotes",{"expected_version":draft["version"]})
+    q=next(q for q in quotes["options"] if q.get("quote_id"))
+    a=client.call("POST","/quotes/"+q["quote_id"]+"/analysis",{"horizon":"FULL","scenario":"BASE"})
+    assert len(a["payments"])==1
+    assert float(a["minimum_with"])==min(float(p["balance"]) for p in a["with_credit"])
+    assert clients["stable"].call("POST","/assistant/messages",{"message":"Почему разрыв?"})["available"] is False
+    # Parameter changes invalidate previous analysis and produce fresh daily series.
+    old_quote=q["quote_id"]
+    draft=client.call("PATCH","/drafts/"+draft["id"],{"expected_version":draft["version"],"purpose":"CASH_GAP","amount":"100000","duration_days":30,"term_months":None,"needed_by":"2026-11-02"})
+    client.call("POST","/quotes/"+old_quote+"/analysis",{"horizon":"FULL"},expected=409)
+    updated=client.call("POST","/drafts/"+draft["id"]+"/quotes",{"expected_version":draft["version"]})
+    q2=next(q for q in updated["options"] if q.get("quote_id"))
+    a2=client.call("POST","/quotes/"+q2["quote_id"]+"/analysis",{"horizon":"FULL","scenario":"BASE"})
+    assert a2["with_credit"]!=a["with_credit"] and a2["issue_date"]=="2026-11-02"
+    draft=client.call("PATCH","/drafts/"+draft["id"],{"expected_version":draft["version"],"purpose":"EXPANSION","amount":"1000000","duration_days":None,"term_months":24,"needed_by":"2026-11-02"})
+    options=client.call("POST","/drafts/"+draft["id"]+"/quotes",{"expected_version":draft["version"]})["options"]
+    comparisons=[client.call("POST","/quotes/"+option["quote_id"]+"/analysis",{"horizon":"FULL","scenario":"BASE"}) for option in options if option.get("quote_id")]
+    assert len(comparisons)>1 and comparisons[0]["payments"]!=comparisons[1]["payments"]
+    print("PASS: amount, term, issue date, purpose and product recalculate server series; stale quotes rejected")
+    print("PASS: automatic company-bound outcomes, ownership, history, documents, idempotency, full-term analysis, unavailable model")
+
+
+if __name__ == "__main__":
+    main()

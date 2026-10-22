@@ -2202,3 +2202,87 @@ details summary {
     scroll-behavior: auto !important;
   }
 }
+/* Forecasts remain visible on laptop screens without constraining the page height. */
+.home-shell.viewport-shell {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+.home-shell .workspace {
+  overflow: visible;
+}
+.dashboard-forecast {
+  margin: 24px 0;
+}
+.balance-chart {
+  margin: 18px 0;
+  padding: 20px;
+  min-width: 0;
+  background: #faf8ff;
+  border-radius: 20px;
+}
+.balance-chart svg {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  touch-action: pan-y;
+}
+.balance-chart p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.balance-chart input[type='range'] {
+  display: block;
+  width: 100%;
+}
+.balance-chart details {
+  max-height: 250px;
+  overflow: auto;
+}
+.balance-chart h2 {
+  font-size: 21px;
+}
+.context-help {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  width: min(440px, 100vw);
+  padding: 24px;
+  background: #f4f0ff;
+  box-shadow: -8px 0 35px #39275433;
+  overflow: auto;
+}
+.context-help textarea {
+  width: 100%;
+  min-height: 120px;
+  margin: 16px 0;
+}
+.context-help p {
+  white-space: pre-wrap;
+}
+.decision-report pre {
+  overflow: auto;
+  max-width: 100%;
+  font-size: 12px;
+}
+.calc-stage .stage-content > label {
+  display: block;
+  margin: 12px 0;
+}
+.calc-stage select {
+  max-width: 100%;
+  margin-left: 10px;
+  padding: 8px;
+}
+
+.risk-banner {
+  background: #fff0ed;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}

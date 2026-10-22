@@ -42,9 +42,38 @@ public class JdbcForecastRepository implements ForecastRepository {
         LocalDate after,
         LocalDate through
     ) {
-        return rows(db.queryForList(
+        var events = new java.util.ArrayList<>(rows(db.queryForList(
             "SELECT event_date,amount,kind,source FROM ledger_events WHERE company_id=? AND event_date>? AND event_date<=? AND kind<>'DISBURSEMENT' ORDER BY event_date",
-            companyId, after, through));
+            companyId, after, through)));
+        for (var loan : rows(db.queryForList(
+            "SELECT monthly_payment,next_payment_date,end_date,name FROM existing_loans WHERE company_id=?",
+            companyId))) {
+            LocalDate first = (LocalDate) loan.get("next_payment_date");
+            for (int m = 0; !first.plusMonths(m).isAfter(through); m++) {
+                LocalDate day = first.plusMonths(m);
+                if (day.isAfter(after) && !day.isAfter((LocalDate) loan.get("end_date")))
+                    events.add(Map.of("event_date", day, "amount", ((BigDecimal) loan.get("monthly_payment")).negate(),
+                        "kind", "DEBT_PAYMENT", "source", loan.get("name")));
+            }
+        }
+        for (var loan : rows(db.queryForList(
+            "SELECT l.next_payment_date,l.next_payment_amount AS next_payment,a.* FROM loans l JOIN applications a ON a.id=l.application_id WHERE l.company_id=?",
+            companyId))) {
+            LocalDate first = (LocalDate) loan.get("next_payment_date");
+            int count = loan.get("duration_days") != null ? 1 : ((Number) loan.get("term_months")).intValue();
+            for (int m = 0; m < count && !first.plusMonths(m).isAfter(through); m++) {
+                LocalDate day = first.plusMonths(m);
+                BigDecimal due = m == count - 1
+                    ? ((BigDecimal) loan.get("total_repay"))
+                        .subtract(((BigDecimal) loan.get("next_payment")).multiply(BigDecimal.valueOf(count - 1)))
+                    : (BigDecimal) loan.get("next_payment");
+                if (day.isAfter(after))
+                    events.add(Map.of("event_date", day, "amount", due.negate(), "kind", "DEBT_PAYMENT", "source",
+                        "Выданный кредит"));
+            }
+        }
+        events.sort(java.util.Comparator.comparing(e -> (LocalDate) e.get("event_date")));
+        return events;
     }
 
     @Override
@@ -67,8 +96,6 @@ public class JdbcForecastRepository implements ForecastRepository {
         LocalDate after,
         LocalDate through
     ) {
-        return rows(db.queryForList(
-            "SELECT event_date,amount FROM ledger_events WHERE company_id=? AND event_date>? AND event_date<=? AND kind<>'DISBURSEMENT'",
-            companyId, after, through));
+        return plannedEvents(companyId, after, through);
     }
 }

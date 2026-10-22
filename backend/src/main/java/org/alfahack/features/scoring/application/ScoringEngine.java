@@ -27,7 +27,21 @@ public class ScoringEngine implements org.alfahack.features.scoring.port.RiskAss
         BigDecimal amount,
         BigDecimal newPayment
     ) {
-        Profile p = profiles.get(key);
+        return assess(key, amount, newPayment, profiles.get(key).monthlyDebt());
+    }
+
+    @Override
+    public Map<String, Object> assess(
+        String key,
+        BigDecimal amount,
+        BigDecimal newPayment,
+        BigDecimal existingDebt
+    ) {
+        Profile original = profiles.get(key);
+        Profile p = new Profile(original.key(), original.sector(), original.businessMonths(), original.founders(),
+            original.monthlyRevenue(), original.previousRevenue(), original.monthlyProfit(), existingDebt,
+            original.currentAssets(), original.currentLiabilities(), original.collateralValue(), original.overdueDays(),
+            original.sme(), original.creditHistory());
         Map<String, Object> mocks = sources.fetch(key);
         if ("ERROR".equals(mocks.get("status")))
             return Map.of("outcome", "SOURCE_ERROR", "code", "SOURCE_UNAVAILABLE", "explanation",
@@ -35,7 +49,8 @@ public class ScoringEngine implements org.alfahack.features.scoring.port.RiskAss
         if ("ERROR".equals(((Map<?, ?>) mocks.get("turnover")).get("status")))
             return Map.of("outcome", "INSUFFICIENT_DATA", "code", "INCOME_UNKNOWN", "explanation",
                 "Не хватает сведений об оборотах. Нужна финансовая выписка.", "sources", mocks);
-        if (p.monthlyRevenue().signum() <= 0 || p.currentLiabilities().signum() <= 0)
+        if (p.monthlyRevenue().signum() <= 0 || p.currentLiabilities().signum() <= 0
+            || p.previousRevenue().signum() <= 0)
             return Map.of("outcome", "INSUFFICIENT_DATA", "code", "METRIC_INPUT_MISSING", "explanation",
                 "Недостаточно данных для расчёта ключевых метрик.", "sources", mocks);
         double revenue = p.monthlyRevenue().doubleValue(), profit = p.monthlyProfit().doubleValue();
@@ -82,6 +97,19 @@ public class ScoringEngine implements org.alfahack.features.scoring.port.RiskAss
         metrics.put("profit_margin", metric(margin, 20, marginPoints, "≥15%: 20; ≥8%: 12; ниже: 0"));
         metrics.put("revenue_growth", metric(growth, 15, growthPoints, "≥10%: 15; ≥0%: 9; ниже: 0"));
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("inputs", Map.of("monthly_revenue", p.monthlyRevenue(), "previous_revenue", p.previousRevenue(),
+            "monthly_profit", p.monthlyProfit(), "existing_monthly_debt", p.monthlyDebt(), "new_payment", newPayment,
+            "current_assets", p.currentAssets(), "current_liabilities", p.currentLiabilities(),
+            "collateral_value", p.collateralValue(), "overdue_days", p.overdueDays(), "requested_amount", amount));
+        result.put("formulas", Map.of("dti", "(existing_monthly_debt + new_payment) / monthly_revenue",
+            "ltv", "requested_amount / collateral_value", "current_ratio", "current_assets / current_liabilities",
+            "profit_margin", "monthly_profit / monthly_revenue", "revenue_growth",
+            "(monthly_revenue - previous_revenue) / previous_revenue"));
+        result.put("stop_factors", p.overdueDays() >= 30
+            ? java.util.List.of("CURRENT_OVERDUE_30_DAYS")
+            : adjusted < 45
+                ? java.util.List.of("HIGH_RISK")
+                : dti > .55 && liquidity < 1 ? java.util.List.of("DEBT_AND_LIQUIDITY") : java.util.List.of());
         result.put("outcome", outcome);
         result.put("code", code);
         result.put("explanation", explanation);

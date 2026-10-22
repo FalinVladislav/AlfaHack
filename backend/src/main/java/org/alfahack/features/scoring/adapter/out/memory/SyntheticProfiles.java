@@ -21,6 +21,8 @@ public class SyntheticProfiles implements org.alfahack.features.scoring.port.Pro
     private static final Map<String, Profile> CASES = create();
     private static Map<String, Profile> create() {
         Map<String, Profile> cases = new LinkedHashMap<>();
+        cases.put("STABLE", new Profile("STABLE", "Общепит", 30, 2, n(1900000), n(1700000), n(400000), n(150000),
+            n(2300000), n(1000000), n(5000000), 0, true, "CLEAN"));
         cases.put("RETAIL", new Profile("RETAIL", "Розница", 30, 2, n(1900000), n(1700000), n(320000), n(90000),
             n(2300000), n(1000000), n(2600000), 0, true, "CLEAN"));
         cases.put("MANUFACTURING", new Profile("MANUFACTURING", "Производство", 48, 3, n(3600000), n(3100000),

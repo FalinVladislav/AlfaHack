@@ -15,11 +15,14 @@ import org.springframework.stereotype.Repository;
 public class JdbcApplicationsRepository implements ApplicationsRepository {
 
     private final JdbcTemplate db;
+    private final org.alfahack.features.forecast.port.ForecastRepository forecast;
 
     public JdbcApplicationsRepository(
-        JdbcTemplate db
+        JdbcTemplate db,
+        org.alfahack.features.forecast.port.ForecastRepository forecast
     ) {
         this.db = db;
+        this.forecast = forecast;
     }
 
     @Override
@@ -42,14 +45,15 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
         String id,
         String companyId
     ) {
-        return rows(db.queryForList("SELECT * FROM applications WHERE id=? AND company_id=?", id, companyId));
+        return rows(
+            db.queryForList("SELECT * FROM applications WHERE id=? AND company_id=? FOR UPDATE", id, companyId));
     }
 
     @Override
     public List<Map<String, Object>> findById(
         String id
     ) {
-        return rows(db.queryForList("SELECT * FROM applications WHERE id=?", id));
+        return rows(db.queryForList("SELECT * FROM applications WHERE id=? FOR UPDATE", id));
     }
 
     @Override
@@ -198,14 +202,16 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     public Map<String, Object> draftDate(
         String draftId
     ) {
-        return row(db.queryForMap("SELECT needed_by FROM drafts WHERE id=?", draftId));
+        return row(db.queryForMap("SELECT needed_by,purpose FROM drafts WHERE id=?", draftId));
     }
 
     @Override
     public Map<String, Object> companyBalance(
         String companyId
     ) {
-        return row(db.queryForMap("SELECT balance FROM companies WHERE id=?", companyId));
+        return row(db.queryForMap(
+            "SELECT balance, (SELECT COALESCE(SUM(monthly_payment),0) FROM existing_loans WHERE company_id=c.id) + (SELECT COALESCE(SUM(next_payment_amount),0) FROM loans WHERE company_id=c.id) AS monthly_debt FROM companies c WHERE id=?",
+            companyId));
     }
 
     @Override
@@ -214,9 +220,9 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
         LocalDate after,
         LocalDate through
     ) {
-        return row(db.queryForMap(
-            "SELECT COALESCE(SUM(amount),0) AS total FROM ledger_events WHERE company_id=? AND event_date>? AND event_date<=? AND kind<>'DISBURSEMENT'",
-            companyId, after, through));
+        BigDecimal total = forecast.plannedEvents(companyId, after, through).stream()
+            .map(e -> (BigDecimal) e.get("amount")).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return Map.of("total", total);
     }
 
     @Override

@@ -71,7 +71,7 @@ HTTP-авторизация обрабатывает cookie и CSRF в `HttpAuth
 ```mermaid
 stateDiagram-v2
   [*] --> SUBMITTED
-  SUBMITTED --> CHECKING: сотрудник запускает проверку
+  SUBMITTED --> CHECKING: автоматические проверки в транзакции подачи
   CHECKING --> NEEDS_INFO: недостаточно сведений
   NEEDS_INFO --> CHECKING: файл подтверждён
   CHECKING --> APPROVED: учебные правила пройдены
@@ -83,4 +83,4 @@ stateDiagram-v2
   SIGNED --> DISBURSED: демовыдача
 ```
 
-Главные сущности: `companies`, `demo_accounts`, `account_credentials`, `sessions`, `drafts`, `quotes`, `applications`, `scoring_reports`, `info_requests`, `documents`, `loans`, `ledger_events`, `application_events`, `idempotency_records`, `assistant_proposals`. `quotes` сохраняет исходный расчёт, а `applications` — снимок запроса. `scoring_reports` хранит объяснимый результат пяти метрик. Журнал `application_events` фиксирует переходы. Семь отраслевых профилей создаются `SyntheticProfiles`, источники заменены `MockSources`; схема, пороги и JSON-примеры описаны в [credit-policy.md](credit-policy.md).
+Главные сущности: `companies`, `demo_accounts`, `account_credentials`, `sessions`, `drafts`, `quotes`, `applications`, `scoring_reports`, `info_requests`, `documents`, `loans`, `ledger_events`, `application_events`, `idempotency_records`, `assistant_proposals`. `quotes` сохраняет исходный расчёт, а `applications` — снимок запроса. `scoring_reports` хранит объяснимый результат пяти метрик. Журнал `application_events` фиксирует переходы. Финансовый набор закреплён за компанией; выбор другого профиля запрещён. Обороты берутся из transactions, текущий долг из existing_loans и loans. Базовые синтетические снимки создаются `SyntheticProfiles`, источники заменены `MockSources`; схема, пороги и JSON-примеры описаны в [credit-policy.md](credit-policy.md).

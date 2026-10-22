@@ -1,3 +1,5 @@
+import BalanceChart from '../components/BalanceChart'
+import ContextHelp from '../components/ContextHelp'
 import React, { useEffect, useRef, useState } from 'react'
 import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
@@ -68,6 +70,8 @@ export default function FinancingWizard({
   const [quoteError, setQuoteError] = useState('')
   const [consent, setConsent] = useState(false)
   const [analysis, setAnalysis] = useState(null)
+  const [horizon, setHorizon] = useState('30D')
+  const [analysisError, setAnalysisError] = useState('')
   const sequence = useRef(0)
   const queue = useRef(Promise.resolve())
   const requestKey = useRef(null)
@@ -191,6 +195,23 @@ export default function FinancingWizard({
     form.duration_days,
     form.needed_by,
   ])
+
+  useEffect(() => {
+    let active = true
+    setAnalysis(null)
+    setAnalysisError('')
+    if (!selected || calculating || !quotes) return
+    post(`/quotes/${selected}/analysis`, { horizon, scenario: 'BASE' })
+      .then((result) => {
+        if (active) setAnalysis(result)
+      })
+      .catch((error) => {
+        if (active) setAnalysisError(error.message)
+      })
+    return () => {
+      active = false
+    }
+  }, [selected, calculating, quotes, horizon])
 
   async function continueToCalculation(event) {
     event.preventDefault()
@@ -323,6 +344,52 @@ export default function FinancingWizard({
                 }))
               }
             />
+            <label>
+              Назначение
+              <select
+                value={form.purpose}
+                onChange={(e) => setForm((previous) => ({ ...previous, purpose: e.target.value }))}
+              >
+                {Object.entries(purposes).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Продукт
+              <select
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+                disabled={calculating || !quotes}
+              >
+                {(quotes?.options || [])
+                  .filter((p) => p.quote_id)
+                  .map((p) => (
+                    <option key={p.quote_id} value={p.quote_id}>
+                      {p.name || p.product_id} · {percent(p.annual_rate)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Горизонт
+              <select value={horizon} onChange={(e) => setHorizon(e.target.value)}>
+                <option value="30D">30 дней</option>
+                <option value="6M">6 месяцев</option>
+                <option value="FULL">Весь срок кредита</option>
+              </select>
+            </label>
+            {analysis ? (
+              <BalanceChart analysis={analysis} title="Влияние кредита на остаток" />
+            ) : (
+              <p role="status">
+                {analysisError ||
+                  (calculating ? 'Пересчитываем график…' : 'Ожидаем расчёт графика…')}
+              </p>
+            )}
+            <ContextHelp context={{ draft_id: draftId, quote_id: selected || undefined }} />
             <div className="calculation-meta">
               <label htmlFor="needed-by">
                 Дата получения
@@ -337,7 +404,7 @@ export default function FinancingWizard({
                 />
               </label>
               <span className="data-note">
-                Условия рассчитываются по действующим продуктам. Решение — после проверки бизнеса.
+                Ставки и условия демонстрационные. Решение — после проверки бизнеса.
               </span>
             </div>
             <div className="calculation-status" role="status">
@@ -370,40 +437,6 @@ export default function FinancingWizard({
                 </strong>
               </div>
             </div>
-            {chosen && (
-              <>
-                <button
-                  className="text-button"
-                  disabled={busy || calculating}
-                  onClick={() =>
-                    run(async () =>
-                      setAnalysis(
-                        await post(`/quotes/${selected}/analysis`, {
-                          horizon: '30D',
-                          scenario: 'BASE',
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  Как кредит повлияет на остаток?
-                  <Icon name="arrow" size={17} />
-                </button>
-                {analysis && (
-                  <div className="analysis-result">
-                    <div>
-                      <span>Без кредита, конец периода</span>
-                      <strong>{money(analysis.without_credit.at(-1)?.balance)}</strong>
-                    </div>
-                    <div>
-                      <span>С кредитом, конец периода</span>
-                      <strong>{money(analysis.with_credit.at(-1)?.balance)}</strong>
-                    </div>
-                    <p>{analysis.assumptions}</p>
-                  </div>
-                )}
-              </>
-            )}
             <label className="consent">
               <input
                 type="checkbox"

@@ -1,3 +1,5 @@
+import BalanceChart from '../components/BalanceChart'
+import ContextHelp from '../components/ContextHelp'
 import React, { useRef, useState } from 'react'
 import Mascot from '../components/Mascot'
 import { Loading, money, percent, sum } from '../components/Ui'
@@ -16,6 +18,7 @@ function Change({ current, previous, expense = false }) {
 
 export default function Dashboard({
   finance,
+  dashboard,
   insights,
   applications,
   onNavigate,
@@ -58,6 +61,24 @@ export default function Dashboard({
   return (
     <>
       <h1 className="sr-only">Финансы вашего бизнеса</h1>
+      {Number(dashboard?.forecast?.minimum_balance) < 0 && (
+        <section className="risk-banner surface" role="status">
+          <strong>
+            Риск кассового разрыва: {money(dashboard.forecast.minimum_balance)} ·{' '}
+            {dashboard.forecast.minimum_date}
+          </strong>
+          <button className="text-button" onClick={() => onNavigate('analytics/cashflow')}>
+            Посмотреть причины
+          </button>
+          <button
+            className="primary compact"
+            disabled={busy}
+            onClick={() => onFinance(insights.cards.find((c) => c.purpose === 'CASH_GAP') || null)}
+          >
+            Подобрать финансирование
+          </button>
+        </section>
+      )}
       <section className="dashboard" aria-label="Финансы бизнеса">
         <button className="card top-card blue" onClick={() => onNavigate('analytics/balance')}>
           <h2>Остаток денег</h2>
@@ -76,7 +97,7 @@ export default function Dashboard({
           onClick={() => onNavigate('loans')}
           aria-label="Кредитная нагрузка — список кредитов и списаний"
         >
-          <h2>Кредитная нагрузка</h2>
+          <h2>Платежи к выручке</h2>
           <div className="load">
             <div>
               <strong>{percent(load)}</strong>
@@ -133,6 +154,18 @@ export default function Dashboard({
           <Mascot kind="consultant" staticImage className="home-mascot" />
         </button>
       </section>
+      {dashboard?.forecast && (
+        <div className="dashboard-forecast">
+          <BalanceChart forecast={dashboard.forecast} />
+          <button
+            className="primary compact"
+            onClick={() => onFinance(insights.cards.find((c) => c.type === 'RISK') || null)}
+          >
+            Подобрать финансирование
+          </button>
+          <ContextHelp />
+        </div>
+      )}
       {opportunity && (
         <section
           ref={hypothesisRef}
@@ -144,8 +177,14 @@ export default function Dashboard({
         >
           <div className="hyp-surface">
             <button className="hyp-main" disabled={busy} onClick={() => onFinance(opportunity)}>
+              <small>
+                {opportunity.type === 'RISK' ? 'Риск · приоритет 1' : 'Возможность · приоритет 2'}
+              </small>
               <h2>{opportunity.title}</h2>
               <p>{opportunity.text}</p>
+              <p>
+                {opportunity.signal} · {opportunity.source}
+              </p>
               <small>{opportunity.highlight}</small>
             </button>
             <button

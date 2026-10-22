@@ -14,7 +14,7 @@ class ScoringEngineTest {
     private final ScoringEngine scoring = new ScoringEngine(profiles, new MockSources(profiles));
     @Test
     void sevenDistinctSyntheticSectorsAndDeterministicMocks() {
-        assertEquals(7, profiles.catalog().size());
+        assertEquals(8, profiles.catalog().size());
         assertEquals(scoring.assess("IT", new BigDecimal("700000"), new BigDecimal("30000")),
             scoring.assess("IT", new BigDecimal("700000"), new BigDecimal("30000")));
     }

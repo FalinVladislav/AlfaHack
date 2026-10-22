@@ -247,7 +247,7 @@ paths:
             schema:
               type: object
               properties:
-                horizon: {type: string, enum: [30D, 6M]}
+                horizon: {type: string, enum: [30D, 6M, FULL]}
                 scenario: {type: string, enum: [BASE, STRESS]}
       responses:
         '200': {$ref: '#/components/responses/ok'}
@@ -275,7 +275,7 @@ paths:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/checks:
     post:
-      summary: Запустить проверку на синтетическом профиле
+      summary: Повторить проверки по данным заявителя; завершённое решение возвращается без изменений
       parameters: [{$ref: '#/components/parameters/id'}]
       requestBody:
         content:
@@ -283,7 +283,7 @@ paths:
             schema:
               type: object
               properties:
-                demo_profile: {type: string, enum: [RETAIL, MANUFACTURING, IT, CAFE, LOGISTICS, AGRICULTURE, CONSTRUCTION, MISSING_INFO, MOCK_FAILURE, PRIORITY_CONFLICT]}
+                demo_profile: {type: string, deprecated: true, description: "Необязательно. Чужой профиль отклоняется с PROFILE_LOCKED."}
       responses:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/documents:
@@ -399,9 +399,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [draft_id, message]
+              required: [message]
               properties:
                 draft_id: {type: string, format: uuid}
+                quote_id: {type: string, format: uuid}
+                application_id: {type: string, format: uuid}
                 message: {type: string}
       responses:
         '200': {$ref: '#/components/responses/ok'}

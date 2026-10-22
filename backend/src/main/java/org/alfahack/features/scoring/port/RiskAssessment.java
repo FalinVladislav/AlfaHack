@@ -9,6 +9,13 @@ public interface RiskAssessment {
     Map<String, Object> assess(
         String key,
         BigDecimal amount,
+        BigDecimal newPayment,
+        BigDecimal existingDebt
+    );
+
+    Map<String, Object> assess(
+        String key,
+        BigDecimal amount,
         BigDecimal newPayment
     );
 }

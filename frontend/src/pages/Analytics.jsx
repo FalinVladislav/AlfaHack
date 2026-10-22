@@ -1,3 +1,5 @@
+import BalanceChart from '../components/BalanceChart'
+import ContextHelp from '../components/ContextHelp'
 import React, { useState } from 'react'
 import { date } from '../api'
 import { Icon, Loading, money, monthName } from '../components/Ui'
@@ -121,6 +123,9 @@ export default function Analytics({ focus, finance, dashboard, onFinance, onNavi
           ))}
         </div>
       </div>
+      <BalanceChart forecast={dashboard.forecast} />
+      <ContextHelp />
+      <h2>Исторические доходы и расходы</h2>
       <div className="analytics-stats">
         <div className="card blue">
           <span>Остаток денег</span>

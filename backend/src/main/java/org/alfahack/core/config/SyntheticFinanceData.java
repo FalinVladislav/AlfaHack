@@ -41,8 +41,11 @@ public class SyntheticFinanceData implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        seedCompany("STABLE", "CAFE", "56.10", 12);
+        seedCompany("STABLE", "STABLE", "56.10", 12);
         seedCompany("GAP", "MANUFACTURING", "25.11", 28);
+        seedCompany("REJECT", "CONSTRUCTION", "41.20", 9);
+        seedCompany("MISSING", "RETAIL", "47.11", 12);
+        seedCompany("COUNTER", "CAFE", "56.10", 12);
         for (var product : products.catalog()) {
             if (count("SELECT COUNT(*) FROM loan_products WHERE product_id=?", product.id()) == 0) {
                 db.update("INSERT INTO loan_products VALUES (?,?,?,?,?,?,?,?,?)", product.id(), product.name(),
@@ -58,7 +61,7 @@ public class SyntheticFinanceData implements CommandLineRunner {
         String okved,
         int employees
     ) {
-        var profile = profiles.get(profileKey);
+        var profile = new org.alfahack.features.scoring.adapter.out.memory.SyntheticProfiles().get(profileKey);
         db.update(
             "UPDATE companies SET company_id=id,okved=?,business_age=?,industry=?,employees=?,annual_revenue=? WHERE id=? AND company_id IS NULL",
             okved, profile.businessMonths(), profile.sector(), employees,
@@ -94,10 +97,12 @@ public class SyntheticFinanceData implements CommandLineRunner {
         }
         if (count("SELECT COUNT(*) FROM existing_loans WHERE company_id=?", company) == 0) {
             boolean stable = company.equals("STABLE");
+            String first = profile.monthlyDebt().multiply(new BigDecimal("0.6")).toPlainString();
+            String second = profile.monthlyDebt().multiply(new BigDecimal("0.4")).toPlainString();
             loan(company, "EQUIPMENT", "Оборудование для бизнеса", stable ? "1460000" : "3200000",
-                stable ? "90000" : "140000", "0.185", 5, 24);
+                first, "0.185", 5, 24);
             loan(company, "WORKING", "Оборотный кредит", stable ? "780000" : "1150000",
-                stable ? "60000" : "80000", "0.22", 12, 15);
+                second, "0.22", 12, 15);
         }
         if (count("SELECT COUNT(*) FROM loan_requests WHERE company_id=?", company) == 0) {
             db.update("INSERT INTO loan_requests VALUES (?,?,?,?,?,?,?)", company + "-GROWTH", company,
@@ -118,7 +123,13 @@ public class SyntheticFinanceData implements CommandLineRunner {
         String counterparty
     ) {
         db.update("INSERT INTO transactions VALUES (?,?,?,?,?,?,?)", company + "-" + day + "-" + counterparty,
-            company, day, amount, type, category, company + "-" + counterparty);
+            company, day, amount, type, category, switch (counterparty) {
+                case "CUSTOMERS" -> "Покупатели и заказчики";
+                case "SUPPLIERS" -> "Поставщик Ладога";
+                case "TEAM" -> "Выплаты команде";
+                case "RENT" -> "Арендодатель Пространство";
+                default -> "Операционные платежи";
+            });
     }
 
     private void loan(

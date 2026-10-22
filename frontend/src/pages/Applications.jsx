@@ -1,3 +1,4 @@
+import ContextHelp from '../components/ContextHelp'
 import React, { useEffect, useState } from 'react'
 import { api, post, date } from '../api'
 import {
@@ -39,18 +40,10 @@ export default function Applications({
   onError,
 }) {
   const [detail, setDetail] = useState(null)
-  const [profiles, setProfiles] = useState([])
-  const [profile, setProfile] = useState('RETAIL')
   const [file, setFile] = useState(null)
   const [contract, setContract] = useState(null)
   const client = me.role === 'CLIENT'
 
-  useEffect(() => {
-    if (!client)
-      api('/synthetic/profiles')
-        .then(setProfiles)
-        .catch((reason) => onError(reason.message))
-  }, [client])
   useEffect(() => {
     setDetail(null)
     setContract(null)
@@ -197,7 +190,11 @@ export default function Applications({
         <div className="page-heading">
           <div>
             <span className="eyebrow">ЗАЯВКА № {detail.id.slice(0, 8).toUpperCase()}</span>
-            <h1>{stageTitles[detail.status] || statuses[detail.status]}</h1>
+            <h1>
+              {client
+                ? stageTitles[detail.status] || statuses[detail.status]
+                : `Рассмотрение заявки № ${detail.id.slice(0, 8).toUpperCase()}`}
+            </h1>
           </div>
         </div>
         <div className="status-layout">
@@ -221,10 +218,35 @@ export default function Applications({
             {detail.reason_code && (
               <p className="reason-note">{reasons[detail.reason_code] || detail.reason_code}</p>
             )}
+            {client && <ContextHelp context={{ application_id: id }} />}
             {detail.decision_report && (
               <div className="decision-report">
-                <h3>Результат оценки</h3>
+                <h3>Скоринговая оценка</h3>
                 <p>{detail.decision_report.explanation}</p>
+                {detail.decision_report.stop_factors?.length > 0 && (
+                  <p>
+                    Стоп-факторы:{' '}
+                    {detail.decision_report.stop_factors
+                      .map((code) => reasons[code] || code)
+                      .join(', ')}
+                  </p>
+                )}
+                {!client && (
+                  <details>
+                    <summary>Исходные значения и формулы</summary>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          inputs: detail.decision_report.inputs,
+                          formulas: detail.decision_report.formulas,
+                          sources: detail.decision_report.sources,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </details>
+                )}
                 {!client && (
                   <>
                     <strong>Оценка: {detail.decision_report.adjusted_score} / 100</strong>
@@ -449,44 +471,20 @@ export default function Applications({
                 </>
               ) : (
                 <>
-                  <h2>Проверка данных</h2>
-                  {detail.demo_profile && <p>Закреплённый профиль: {detail.demo_profile}</p>}
-                  {pending.includes(detail.status) ? (
-                    <>
-                      <label>
-                        Синтетический профиль
-                        <select
-                          value={detail.demo_profile || profile}
-                          disabled={!!detail.demo_profile}
-                          onChange={(event) => setProfile(event.target.value)}
-                        >
-                          {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
-                              {item.sector}
-                            </option>
-                          ))}
-                          <option value="MISSING_INFO">Недостаточно сведений</option>
-                          <option value="MOCK_FAILURE">Источник недоступен</option>
-                          <option value="PRIORITY_CONFLICT">
-                            Приоритетная отрасль с просрочкой
-                          </option>
-                        </select>
-                      </label>
-                      <button
-                        className="primary full"
-                        disabled={busy || detail.status === 'NEEDS_INFO'}
-                        onClick={() =>
-                          action('/checks', { demo_profile: detail.demo_profile || profile })
-                        }
-                      >
-                        Запустить проверку
-                      </button>
-                      {detail.status === 'NEEDS_INFO' && (
-                        <p>Для продолжения клиент должен подтвердить запрошенные сведения.</p>
-                      )}
-                    </>
-                  ) : (
-                    <p>Решение сохранено в карточке.</p>
+                  <h2>Данные заявителя</h2>
+                  <p>Компания: {detail.company_id}</p>
+                  <p>Финансовый набор: {detail.demo_profile}</p>
+                  <p>
+                    Проверки запускаются автоматически. Сотрудник просматривает отчёт и историю.
+                  </p>
+                  {detail.status === 'CHECKING' && (
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => action('/checks', {})}
+                    >
+                      Повторить недоступные проверки
+                    </button>
                   )}
                 </>
               )}

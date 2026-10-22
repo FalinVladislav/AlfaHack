@@ -52,6 +52,17 @@ public class SeedData implements CommandLineRunner {
     }
 
     private void seedCredentials() {
+        for (String[] demo : new String[][]{
+                {"REJECT", "reject", "Стройка Север"}, {"MISSING", "missing", "Магазин Новый день"},
+                {"COUNTER", "counter", "Кафе У дома"}
+        }) {
+            if (db.queryForObject("SELECT COUNT(*) FROM companies WHERE id=?", Integer.class, demo[0]) == 0) {
+                db.update("INSERT INTO companies(id,name,balance) VALUES (?,?,?)", demo[0], demo[2],
+                    new BigDecimal("800000"));
+                db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", demo[1], "CLIENT", demo[0], demo[2]);
+            }
+            auth.ensureCredential(demo[1], "Alfa2026!");
+        }
         db.update("UPDATE demo_accounts SET label='Кофейня Вторая чашка' WHERE account_key='stable'");
         db.update("UPDATE demo_accounts SET label='Мастерская Горизонт' WHERE account_key='gap'");
         db.update("UPDATE demo_accounts SET label='Кредитный специалист' WHERE account_key='staff'");

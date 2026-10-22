@@ -49,7 +49,7 @@ class FinanceIntegrationTest {
         var application = applications.submit(stable, Map.of("draft_id", draftId, "quote_id", quote.get("quote_id"),
             "expected_version", draft.get("version"), "consents", true), "finance-submit");
         String applicationId = (String) application.get("id");
-        var approved = applications.check(new User("staff", "STAFF", null, "test"), applicationId, "RETAIL");
+        var approved = applications.check(new User("staff", "STAFF", null, "test"), applicationId, null);
         assertEquals("APPROVED", approved.get("status"));
         applications.accept(stable, applicationId, Map.of("offer_version", approved.get("offer_version")),
             "finance-accept");

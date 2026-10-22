@@ -135,6 +135,7 @@ public class Applications implements org.alfahack.features.applications.port.App
                 (BigDecimal) q.get("total_repay"), null, null, 0, 1, now, now);
             event(id, user.key(), null, "SUBMITTED", null);
             storeKey(user, "SUBMIT", key, bodyHash, id);
+            check(new User("SYSTEM", "STAFF", null, ""), id, null);
             return detail(user, id);
 
         });
@@ -148,39 +149,45 @@ public class Applications implements org.alfahack.features.applications.port.App
         return unitOfWork.required(() -> {
             user.staff();
             Map<String, Object> a = raw(user, id);
+            String bound = profiles.companyKey((String) a.get("company_id"));
+            if (profile != null && !profile.equals(bound))
+                throw DomainException.conflict("PROFILE_LOCKED", "Используются только данные компании-заявителя");
             String status = (String) a.get("status");
             if (!List.of("SUBMITTED", "CHECKING", "NEEDS_INFO").contains(status))
-                throw DomainException.conflict("INVALID_STATE", "Проверки уже завершены");
-            if (a.get("demo_profile") == null) {
-                if (profile == null || !List
-                    .of("GOOD", "GAP", "MISSING_INFO", "COUNTEROFFER", "HIGH_RISK", "RETAIL", "MANUFACTURING", "IT",
-                        "CAFE", "LOGISTICS", "AGRICULTURE", "CONSTRUCTION", "MOCK_FAILURE", "PRIORITY_CONFLICT")
-                    .contains(profile))
-                    throw DomainException.bad("PROFILE_REQUIRED", "Выберите синтетический профиль");
-                repository.lockProfile(profile, id);
-                a = raw(user, id);
-            } else
-                if (profile != null && !profile.equals(a.get("demo_profile")))
-                    throw DomainException.conflict("PROFILE_LOCKED", "Профиль закреплён после запуска проверок");
+                return detail(user, id);
+            if (a.get("demo_profile") != null && !bound.equals(a.get("demo_profile")))
+                throw DomainException.conflict("LEGACY_PROFILE",
+                    "Старая заявка использует другой набор данных. Создайте новую заявку");
+            repository.lockProfile(bound, id);
+            a = raw(user, id);
             if (status.equals("NEEDS_INFO")) {
                 int pending = repository.pendingRequests(id);
                 if (pending > 0)
                     throw DomainException.conflict("INFO_PENDING", "Сначала подтвердите запрошенные сведения");
             }
             transition(id, user.key(), status, "CHECKING", null);
-            String selected = (String) a.get("demo_profile");
+            String selected = bound;
             int verified = repository.verifiedRequests(id);
-            if ("MISSING_INFO".equals(selected) && verified == 0) {
-                String requestId = Util.id();
-                repository.insertRequest(requestId, id, "UNKNOWN_DEBT", "FINANCIAL_STATEMENT", "2026-09", "OPEN");
-                transition(id, "RULES", "CHECKING", "NEEDS_INFO", "UNKNOWN_DEBT");
-                return detail(user, id);
-            }
             BigDecimal amount = (BigDecimal) a.get("amount");
             BigDecimal payment = (BigDecimal) a.get("monthly_payment");
             String product = (String) a.get("product_id");
-            Map<String, Object> report = scoring.assess("MISSING_INFO".equals(selected) ? "GOOD" : selected, amount,
-                payment == null ? BigDecimal.ZERO : payment);
+            BigDecimal existingDebt = (BigDecimal) repository.companyBalance((String) a.get("company_id"))
+                .get("monthly_debt");
+            event(id, "RULES", "CHECKING", "CHECKING", "ASSESSING_TERMS");
+            Map<String, Object> report = new LinkedHashMap<>(
+                scoring.assess("MISSING_INFO".equals(selected) && verified > 0 ? "GOOD" : selected, amount,
+                    payment == null ? BigDecimal.ZERO : payment, existingDebt));
+            report.put("company_id", a.get("company_id"));
+            report.put("assessed_at", LocalDateTime.now().toString());
+            report.put("data_sources", Map.of("operations", "transactions: два последних завершённых месяца",
+                "current_debt", "existing_loans + loans", "assets_and_collateral",
+                "Известный синтетический снимок компании"));
+            Profile financialInput = profiles.get(selected);
+            report.put("free_cashflow", financialInput.monthlyProfit().subtract(existingDebt));
+            report.put("payment_limit",
+                financialInput.monthlyProfit().subtract(existingDebt).multiply(new BigDecimal("0.50")));
+            report.put("term_assumption",
+                "Месячные показатели постоянны на весь срок; новые доходы от инвестиций не предполагаются");
             try {
                 String serialized = json.write(report);
                 repository.deleteReport(id);
@@ -206,7 +213,7 @@ public class Applications implements org.alfahack.features.applications.port.App
             }
             Profile input = profiles.get(selected);
             BigDecimal income = input.monthlyRevenue(), costs = income.subtract(input.monthlyProfit()),
-                debt = input.monthlyDebt();
+                debt = existingDebt;
             BigDecimal free = income.subtract(costs).subtract(debt);
             if (free.signum() <= 0) {
                 transition(id, "RULES", "CHECKING", "REJECTED", "NO_FREE_CASHFLOW");
@@ -354,6 +361,11 @@ public class Applications implements org.alfahack.features.applications.port.App
             repository.insertLedgerEvent(Util.id(), user.company(), today, amount, "DISBURSEMENT",
                 "Выдача кредита " + loanId);
             repository.creditCompany(amount, user.company());
+            if (!"CASH_GAP".equals(repository.draftDate((String) a.get("draft_id")).get("purpose"))) {
+                repository.insertLedgerEvent(Util.id(), user.company(), today, amount.negate(), "INVESTMENT_SPEND",
+                    "Целевое расходование кредита");
+                repository.creditCompany(amount.negate(), user.company());
+            }
             transition(id, user.key(), "SIGNED", "DISBURSED", null);
             storeKey(user, "DISBURSE", key, Util.hash(id), id);
             return detail(user, id);

@@ -1,115 +1,83 @@
 package org.alfahack.features.insights.application;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.YearMonth;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import org.alfahack.core.domain.Profile;
+import java.util.*;
 import org.alfahack.core.domain.User;
-import org.alfahack.features.scoring.port.ProfileCatalog;
+import org.alfahack.features.forecast.port.ForecastUseCases;
+import org.alfahack.features.finance.port.FinanceUseCases;
+import org.alfahack.features.insights.port.InsightUseCases;
 
-public class BusinessInsights implements org.alfahack.features.insights.port.InsightUseCases {
+public class BusinessInsights implements InsightUseCases {
 
-    private final ProfileCatalog profiles;
-    private final LocalDate today;
-
+    private final ForecastUseCases forecast;
+    private final FinanceUseCases finance;
     public BusinessInsights(
-        ProfileCatalog profiles,
-        String today
+        ForecastUseCases forecast,
+        FinanceUseCases finance
     ) {
-        this.profiles = profiles;
-        this.today = LocalDate.parse(today);
+        this.forecast = forecast;
+        this.finance = finance;
     }
 
-    private Profile profile(
-        User user
-    ) {
+    public Map<String, Object> cashflow(User user) {
+        return finance.overview(user);
+    }
+
+    public Map<String, Object> insights(User user) {
         user.client();
-        return profiles.get(user.company().equals("GAP") ? "MANUFACTURING" : "CAFE");
-    }
-
-    public Map<String, Object> cashflow(
-        User user
-    ) {
-        Profile p = profile(user);
-        List<Map<String, Object>> months = new ArrayList<>();
-        BigDecimal totalIncome = BigDecimal.ZERO, totalExpenses = BigDecimal.ZERO;
-        for (int i = 6; i >= 1; i--) {
-            YearMonth month = YearMonth.from(today).minusMonths(i);
-            double factor = 1 + (6 - i) * .025 + (i % 3 - 1) * .018;
-            BigDecimal income = p.monthlyRevenue().multiply(BigDecimal.valueOf(factor)).setScale(2,
-                RoundingMode.HALF_UP);
-            BigDecimal expenses = income.subtract(p.monthlyProfit()).add(p.monthlyDebt()).max(BigDecimal.ZERO);
-            months.add(Map.of("month", month.toString(), "income", income, "expenses", expenses, "net",
-                income.subtract(expenses)));
-            totalIncome = totalIncome.add(income);
-            totalExpenses = totalExpenses.add(expenses);
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("period", "Последние 6 завершённых месяцев");
-        result.put("months", months);
-        result.put("total_income", totalIncome);
-        result.put("total_expenses", totalExpenses);
-        result.put("net", totalIncome.subtract(totalExpenses));
-        result.put("expense_categories",
-            List.of(Map.of("name", "Поставщики и материалы", "share", 48), Map.of("name", "Команда", "share", 28),
-                Map.of("name", "Аренда и логистика", "share", 16), Map.of("name", "Прочее", "share", 8)));
-        result.put("data_origin", "SYNTHETIC");
-        return result;
-    }
-
-    public Map<String, Object> insights(
-        User user
-    ) {
-        Profile p = profile(user);
+        var data = finance.overview(user);
+        var plan = forecast.forecast(user, "30D", "BASE");
         List<Map<String, Object>> cards = new ArrayList<>();
-        if (user.company().equals("GAP")) {
-            cards.add(card("Закупка сырья заранее",
-                "Если цена материалов снизится, запас можно пополнить до следующего производственного цикла.",
-                "Оборотные средства", "Сценарий · снижение закупочной цены", "WORKING_CAPITAL", 800000, 12, "mint"));
-            cards.add(card("Закрыть разрыв по платежам",
-                "По плановым событиям возможен отрицательный остаток. Краткосрочный лимит поможет провести оплату поставщику вовремя.",
-                "До 300 000 ₽", "План движения средств", "CASH_GAP", 120000, 45, "violet"));
-            cards.add(
-                card("Новое оборудование", "Дополнительная линия увеличит мощность при сохранении текущей загрузки.",
-                    "Расширение выпуска", "Сценарий роста", "EXPANSION", 2500000, 36, "peach"));
-            cards.add(card("Расширение географии продаж",
-                "При устойчивом спросе новый регион может увеличить объём заказов после проверки долговой нагрузки.",
-                "Новый рынок", "Сценарий расширения", "EXPANSION", 3000000, 36, "blue"));
-        } else {
-            cards.add(card("Закупка товара с высоким спросом",
-                "Финансирование поможет увеличить запас и избежать потери продаж в сезон.", "Оборот до +20%",
-                "Сценарий спроса", "WORKING_CAPITAL", 650000, 12, "mint"));
-            cards.add(card("Дополнительное оборудование",
-                "Новая линия приготовления ускорит обработку заказов в пиковые часы.", "Потенциал +12–18%",
-                "Сценарий загрузки", "EXPANSION", 1800000, 36, "peach"));
-            cards.add(card("Расширение географии продаж",
-                "Финансирование может поддержать открытие новой точки после проверки планового платежа.",
-                "Новые точки продаж", "Сценарий расширения", "EXPANSION", 3000000, 36, "blue"));
-            cards.add(card("Краткосрочный резерв",
-                "Дополнительный лимит поможет сгладить неравномерные поступления и сохранить график оплат.",
-                "Резерв ликвидности", "Денежный план", "CASH_GAP", 150000, 30, "violet"));
+        BigDecimal gap = (BigDecimal) plan.get("gap_amount");
+        if (gap.signum() > 0) {
+            Map<String, Object> risk = new LinkedHashMap<>();
+            risk.put("type", "RISK");
+            risk.put("priority", 1);
+            risk.put("title", "Риск кассового разрыва");
+            risk.put("text", "Минимум на " + plan.get("minimum_date") + ": −" + gap.toPlainString()
+                + " ₽. Проверьте платежи и даты поступлений.");
+            risk.put("highlight", "Плановый дефицит " + gap.toPlainString() + " ₽; краткосрочный лимит до 300 000 ₽");
+            risk.put("signal", "Плановые события и графики действующих кредитов");
+            risk.put("purpose", "CASH_GAP");
+            risk.put("amount", gap.min(new BigDecimal("300000")));
+            risk.put("duration_days", 45);
+            risk.put("term_months", 45);
+            risk.put("needed_by", plan.get("first_negative_date"));
+            risk.put("tone", "violet");
+            risk.put("source", "ledger_events + existing_loans + loans");
+            risk.put("action", "Подобрать финансирование");
+            cards.add(risk);
         }
-        return Map.of("company_sector", p.sector(), "basis",
-            "Сценарии на синтетических данных; внешние рыночные цены не запрашиваются", "cards", cards,
-            "assistant_connection", "MODEL_API_OPTIONAL");
-    }
-
-    private Map<String, Object> card(
-        String title,
-        String text,
-        String highlight,
-        String signal,
-        String purpose,
-        long amount,
-        int term,
-        String tone
-    ) {
-        return Map.of("title", title, "text", text, "highlight", highlight, "signal", signal, "purpose", purpose,
-            "amount", amount, "term_months", term, "tone", tone);
+        Map<String, Object> opportunity = new LinkedHashMap<>();
+        opportunity.put("type", "OPPORTUNITY");
+        opportunity.put("priority", 2);
+        opportunity.put("title", "Проверить возможность развития");
+        @SuppressWarnings("unchecked")
+        var months = (List<Map<String, Object>>) data.get("months");
+        BigDecimal net = months.isEmpty() ? BigDecimal.ZERO : (BigDecimal) months.getLast().get("net");
+        opportunity.put("text", "Чистый денежный поток за последний завершённый месяц: " + net.toPlainString()
+            + " ₽. Сравните стоимость финансирования с плановым остатком; дополнительная выручка не предполагается.");
+        opportunity.put("highlight", "Гипотеза требует оценки бизнеса");
+        opportunity.put("signal", "История операций компании");
+        opportunity.put("source", "transactions; синтетические данные");
+        opportunity.put("action", "Рассчитать условия");
+        opportunity.put("purpose", "EXPANSION");
+        opportunity.put("amount", 1000000);
+        opportunity.put("term_months", 24);
+        opportunity.put("tone", "mint");
+        if (net.signum() > 0)
+            cards.add(opportunity);
+        else {
+            opportunity.put("type", "RISK");
+            opportunity.put("priority", 1);
+            opportunity.put("title", "Расходы превышают поступления");
+            opportunity.put("highlight", "Дефицит по операциям " + net.negate().toPlainString() + " ₽ за "
+                + (months.isEmpty() ? "неизвестный период" : months.getLast().get("month")));
+            opportunity.put("purpose", "WORKING_CAPITAL");
+            opportunity.put("action", "Проверить расходы и условия");
+            cards.add(opportunity);
+        }
+        return Map.of("cards", cards, "basis", "Детерминированные сигналы по данным вашей компании", "data_origin",
+            data.get("data_origin"));
     }
 }

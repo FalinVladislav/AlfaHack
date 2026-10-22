@@ -63,8 +63,8 @@ public class FeatureConfiguration {
     }
 
     @Bean
-    ProfileCatalog profiles() {
-        return new SyntheticProfiles();
+    ProfileCatalog profiles(org.springframework.jdbc.core.JdbcTemplate db) {
+        return new org.alfahack.features.scoring.adapter.out.persistence.CompanyProfiles(db);
     }
 
     @Bean
@@ -126,10 +126,10 @@ public class FeatureConfiguration {
 
     @Bean
     InsightUseCases insights(
-        ProfileCatalog profiles,
-        @Value("${app.demo-today}") String today
+        ForecastUseCases forecast,
+        org.alfahack.features.finance.port.FinanceUseCases finance
     ) {
-        return new BusinessInsights(profiles, today);
+        return new BusinessInsights(forecast, finance);
     }
 
     @Bean
@@ -143,11 +143,12 @@ public class FeatureConfiguration {
 
     @Bean
     AssistantUseCases assistant(
+        ForecastUseCases forecast,
         AssistantRepository repository,
         DraftUseCases drafts,
         ApplicationUseCases applications,
         LanguageModel model
     ) {
-        return new Assistant(repository, drafts, applications, model);
+        return new Assistant(forecast, repository, drafts, applications, model);
     }
 }
