@@ -13,6 +13,16 @@ docker compose up --build -d
 
 Откройте `http://localhost:8088`. API доступен внутри Compose; проверка состояния: `http://localhost:8088/actuator/health`. При первом запуске создаются тестовые компании и операции.
 
+### Docker в режиме разработки
+
+Dev-конфигурация запускает Vite с HMR и Spring Boot с автоматической перекомпиляцией и перезапуском после изменений в `backend/src` и `backend/docs`:
+
+```powershell
+docker compose -f compose.yaml -f compose.dev.yaml up --build
+```
+
+Frontend доступен на `http://localhost:5173`, backend — на `http://localhost:8080`, PostgreSQL — на `localhost:5432`. Порты можно изменить через `DEV_WEB_PORT`, `API_PORT` и `DB_PORT` в `.env`. Кэши Maven, `node_modules` и скомпилированные классы хранятся в именованных Docker-томах и не попадают в рабочее дерево. Остановить окружение можно через `docker compose -f compose.yaml -f compose.dev.yaml down`; для удаления также и dev-томов добавьте `-v`.
+
 Для запуска без Docker нужны Java 21+, Maven 3.6.3+, Node 22+ и npm. Backend использует локальную файловую H2 в `data/`:
 
 ```powershell
