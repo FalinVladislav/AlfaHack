@@ -512,6 +512,7 @@ svg {
   display: flex;
   align-items: flex-start;
   padding-top: 45px;
+  background: #d8e99a;
 }
 .finance-card h2 {
   max-width: 65%;
@@ -520,38 +521,57 @@ svg {
 .mascot {
   position: relative;
   pointer-events: none;
+  overflow: hidden;
+  background: var(--mascot-background);
 }
-.mascot video {
-  display: none;
+.mascot-guide {
+  --mascot-background: #dfc1fa;
 }
-.mascot canvas {
+.mascot-consultant {
+  --mascot-background: #d8e99a;
+}
+.mascot-manager {
+  --mascot-background: #b4c9f7;
+}
+.mascot video,
+.mascot-poster {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   position: relative;
   z-index: 1;
 }
-.mascot-fallback {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  color: #68459c;
+.mascot video[hidden] {
+  display: none;
 }
 .home-mascot {
   position: absolute;
-  right: -2%;
-  bottom: -45%;
-  height: 150%;
-  width: 58%;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  width: 48%;
   z-index: 0;
 }
+.home-mascot .mascot-poster {
+  object-fit: contain;
+  object-position: right bottom;
+}
 .hypothesis {
-  background: #dcd7fa;
   border-radius: 18px;
   min-height: 145px;
   position: relative;
   margin-top: 22px;
+}
+.hyp-surface {
+  position: relative;
+  height: 100%;
+  background: #dcd7fa;
+  border-radius: inherit;
+  transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition:
+    transform 180ms ease-out,
+    box-shadow 180ms ease-out;
 }
 .hyp-main {
   width: 100%;
@@ -706,16 +726,7 @@ svg {
   right: 0;
   top: 30px;
   bottom: 0;
-}
-.stage-mascot:before {
-  content: '';
-  position: absolute;
-  inset: 0 -10px 20px -30px;
-  background: linear-gradient(140deg, #e9e1f8, #ddd8fb);
-  border-radius: 55% 18% 30% 45%;
-}
-.stage-mascot canvas {
-  object-position: center bottom;
+  border-radius: 28px;
 }
 .purpose-field {
   border: 0;
@@ -1548,7 +1559,7 @@ details summary {
   margin: 20px 0;
   overflow: hidden;
 }
-.login-visual > div:first-child {
+.login-visual > div:not(.mascot):first-child {
   padding: 55px 45px;
   position: relative;
   z-index: 2;
@@ -1577,7 +1588,7 @@ details summary {
     z-index: 3;
     box-shadow: 0 10px 30px #8793c323;
   }
-  .hypothesis:has(.hyp-main:hover) {
+  .hypothesis:has(.hyp-main:hover) .hyp-surface {
     box-shadow: 0 10px 30px #8793c323;
   }
 }
@@ -1955,6 +1966,232 @@ details summary {
     grid-template-columns: 1fr;
   }
 }
+/* The home and goal views use the available viewport, rather than hiding overflowing content. */
+@media (min-width: 1001px) {
+  .viewport-shell {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: clip;
+  }
+  .viewport-shell .app-header {
+    flex: 0 0 clamp(70px, 10vh, 104px);
+    width: 100%;
+    height: auto;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .viewport-shell .workspace {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 22px;
+  }
+  .home-shell .dashboard {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: 1fr 0.9fr;
+  }
+  .home-shell .card {
+    height: auto;
+    min-height: 0;
+    padding: clamp(20px, 3vh, 38px);
+  }
+  .home-shell .card h2 {
+    font-size: clamp(21px, 3.3vh, 31px);
+  }
+  .home-shell .card .value {
+    font-size: clamp(32px, min(4vw, 6.8vh), 64px);
+  }
+  .home-shell .delta {
+    font-size: clamp(18px, 2.8vh, 26px);
+    margin-top: 6px;
+  }
+  .home-shell .load strong {
+    font-size: clamp(36px, 6.5vh, 60px);
+  }
+  .home-shell .load p {
+    font-size: clamp(17px, 2.7vh, 23px);
+    margin: 8px 0 0;
+  }
+  .home-shell .ring {
+    width: clamp(90px, 15vh, 145px);
+  }
+  .home-shell .hypothesis {
+    flex: 0 0 clamp(145px, 21vh, 220px);
+    min-height: 0;
+    margin-top: 16px;
+  }
+  .home-shell .hyp-main {
+    height: 100%;
+    padding: 16px 64px 30px;
+  }
+  .home-shell .hyp-main h2 {
+    font-size: clamp(24px, 3.8vh, 42px);
+    margin-bottom: 6px;
+  }
+  .home-shell .hyp-main p {
+    font-size: clamp(14px, 1.9vh, 18px);
+  }
+  .home-shell .hyp-main small {
+    font-size: clamp(13px, 1.8vh, 16px);
+    margin-top: 6px;
+  }
+  .viewport-shell .progress {
+    flex-shrink: 0;
+    width: 65%;
+    margin-bottom: 16px;
+  }
+  .viewport-shell .reason-stage {
+    flex: 1;
+    min-height: 0;
+    padding-top: clamp(8px, 3vh, 40px);
+  }
+  .viewport-shell .reason-stage h1 {
+    font-size: clamp(36px, 6vh, 68px);
+    margin-bottom: clamp(18px, 3.5vh, 40px);
+  }
+  .viewport-shell .textarea-wrap textarea {
+    height: clamp(145px, 27vh, 300px);
+    resize: none;
+    font-size: clamp(18px, 2.5vh, 24px);
+  }
+  .viewport-shell .stage-mascot {
+    top: 0;
+    max-height: 100%;
+  }
+  .viewport-shell .saved-drafts {
+    position: relative;
+    margin: 10px 0 0;
+  }
+  .viewport-shell .saved-draft-list {
+    position: absolute;
+    z-index: 5;
+    bottom: 100%;
+    width: 100%;
+    max-height: 30vh;
+    overflow-y: auto;
+    background: #fff;
+    padding: 8px 18px;
+    border: 1px solid #ded6ec;
+    border-radius: 14px;
+    box-shadow: 0 8px 30px #33234b18;
+  }
+}
+
+/* Restrained Alfa-style sign-in; authentication remains the project's own API. */
+.login-page {
+  height: 100dvh;
+  min-height: 600px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+}
+.alfa-mark {
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #ef3124;
+  color: #fff;
+  font-size: 27px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 37px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  z-index: 3;
+}
+.login-form-wrap {
+  display: grid;
+  place-items: center;
+  padding: 70px 40px;
+}
+.login-form {
+  width: min(400px, 100%);
+  margin: 0;
+}
+.login-form h1 {
+  color: #222;
+  font-size: 40px;
+  letter-spacing: -1px;
+  text-align: center;
+  margin-bottom: 18px;
+}
+.login-form .login-caption {
+  color: #25262a;
+  text-align: center;
+  font-size: 15px;
+  margin-bottom: 28px;
+}
+.login-form input {
+  height: 56px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #f0f0f2;
+  color: #222;
+}
+.login-form input:focus {
+  background: #e9e9ec;
+  border-color: #a0a0a8;
+  outline: none;
+}
+.login-form > label,
+.password-field {
+  display: block;
+  margin-bottom: 16px;
+}
+.password-field {
+  position: relative;
+}
+.password-field input {
+  padding-right: 54px;
+}
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: #797980;
+}
+.login-submit {
+  width: 100%;
+  height: 56px;
+  margin-top: 16px;
+  border-radius: 12px;
+  background: #222225;
+  color: #fff;
+  font-weight: 600;
+}
+.login-submit:hover:not(:disabled) {
+  background: #37373b;
+}
+.login-visual {
+  margin: 0;
+  border-radius: 0;
+  background: #b4c9f7;
+}
+.login-mascot {
+  inset: 50% auto auto 50%;
+  width: min(400px, 78%, calc((100dvh - 120px) * 2 / 3));
+  aspect-ratio: 2 / 3;
+  transform: translate(-50%, -50%);
+}
+.login-mascot video,
+.login-mascot .mascot-poster {
+  object-fit: contain;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

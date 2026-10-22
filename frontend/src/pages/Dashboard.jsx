@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import Mascot from '../components/Mascot'
-import { Icon, Loading, money, monthName, percent, sum } from '../components/Ui'
+import { Loading, money, percent, sum } from '../components/Ui'
 
 function Change({ current, previous, expense = false }) {
   if (!previous) return null
@@ -14,8 +14,16 @@ function Change({ current, previous, expense = false }) {
   )
 }
 
-export default function Dashboard({ finance, insights, onNavigate, onFinance, busy }) {
+export default function Dashboard({
+  finance,
+  insights,
+  applications,
+  onNavigate,
+  onFinance,
+  busy,
+}) {
   const [slide, setSlide] = useState(0)
+  const hypothesisRef = useRef(null)
   if (!finance || !insights) return <Loading />
   const latest = finance.months.at(-1) || {}
   const previous = finance.months.at(-2) || {}
@@ -24,6 +32,28 @@ export default function Dashboard({ finance, insights, onNavigate, onFinance, bu
   const cards = insights.cards || []
   const opportunity = cards[slide % Math.max(cards.length, 1)]
   const changeSlide = (delta) => setSlide((value) => (value + delta + cards.length) % cards.length)
+  const pending = applications.filter(
+    (item) => !['DISBURSED', 'CLOSED', 'REJECTED'].includes(item.status),
+  )
+
+  function tiltHypothesis(event) {
+    if (
+      event.pointerType === 'touch' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+      return
+    const card = hypothesisRef.current
+    const bounds = card.getBoundingClientRect()
+    const x = (event.clientX - bounds.left) / bounds.width - 0.5
+    const y = (event.clientY - bounds.top) / bounds.height - 0.5
+    card.style.setProperty('--tilt-x', `${-y * 5}deg`)
+    card.style.setProperty('--tilt-y', `${x * 5}deg`)
+  }
+
+  function resetHypothesis() {
+    hypothesisRef.current?.style.removeProperty('--tilt-x')
+    hypothesisRef.current?.style.removeProperty('--tilt-y')
+  }
 
   return (
     <>
@@ -33,17 +63,12 @@ export default function Dashboard({ finance, insights, onNavigate, onFinance, bu
           <h2>Остаток денег</h2>
           <div>
             <div className="value">{money(finance.company.balance)}</div>
-            <span className="card-caption">На счетах компании</span>
           </div>
         </button>
-        <button className="card top-card mint" onClick={() => onNavigate('analytics/cashflow')}>
-          <h2>Денежный поток</h2>
+        <button className="card top-card mint" onClick={() => onNavigate('applications')}>
+          <h2>Заявки на кредит</h2>
           <div>
-            <div className="value green">
-              {Number(latest.net) > 0 ? '+' : ''}
-              {money(latest.net)}
-            </div>
-            <span className="card-caption">За {monthName(latest.month)}</span>
+            <div className="value">{pending.length}</div>
           </div>
         </button>
         <button
@@ -105,49 +130,52 @@ export default function Dashboard({ finance, insights, onNavigate, onFinance, bu
             <br />
             финансирование
           </h2>
-          <Mascot className="home-mascot" />
+          <Mascot kind="consultant" staticImage className="home-mascot" />
         </button>
       </section>
       {opportunity && (
-        <section className="hypothesis" aria-label="Возможности развития бизнеса">
-          <button className="hyp-main" disabled={busy} onClick={() => onFinance(opportunity)}>
-            <h2>{opportunity.title}</h2>
-            <p>{opportunity.text}</p>
-            <small>{opportunity.highlight}</small>
-          </button>
-          <button
-            className="hyp-edge left"
-            onClick={() => changeSlide(-1)}
-            aria-label="Предыдущая возможность"
-          >
-            ‹
-          </button>
-          <button
-            className="hyp-edge right"
-            onClick={() => changeSlide(1)}
-            aria-label="Следующая возможность"
-          >
-            ›
-          </button>
-          <div className="slide-dots" aria-label={`Возможность ${slide + 1} из ${cards.length}`}>
-            {cards.map((card, index) => (
-              <button
-                key={card.title}
-                className={index === slide ? 'selected' : ''}
-                onClick={() => setSlide(index)}
-                aria-label={`Возможность ${index + 1}`}
-                aria-pressed={index === slide}
-              />
-            ))}
+        <section
+          ref={hypothesisRef}
+          className="hypothesis"
+          aria-label="Возможности развития бизнеса"
+          onPointerMove={tiltHypothesis}
+          onPointerLeave={resetHypothesis}
+          onPointerCancel={resetHypothesis}
+        >
+          <div className="hyp-surface">
+            <button className="hyp-main" disabled={busy} onClick={() => onFinance(opportunity)}>
+              <h2>{opportunity.title}</h2>
+              <p>{opportunity.text}</p>
+              <small>{opportunity.highlight}</small>
+            </button>
+            <button
+              className="hyp-edge left"
+              onClick={() => changeSlide(-1)}
+              aria-label="Предыдущая возможность"
+            >
+              ‹
+            </button>
+            <button
+              className="hyp-edge right"
+              onClick={() => changeSlide(1)}
+              aria-label="Следующая возможность"
+            >
+              ›
+            </button>
+            <div className="slide-dots" aria-label={`Возможность ${slide + 1} из ${cards.length}`}>
+              {cards.map((card, index) => (
+                <button
+                  key={card.title}
+                  className={index === slide ? 'selected' : ''}
+                  onClick={() => setSlide(index)}
+                  aria-label={`Возможность ${index + 1}`}
+                  aria-pressed={index === slide}
+                />
+              ))}
+            </div>
           </div>
         </section>
       )}
-      <div className="home-footer">
-        <span>Демонстрационный профиль · Все данные синтетические</span>
-        <button onClick={() => onNavigate('applications')}>
-          Заявки и кредиты <Icon name="arrow" size={17} />
-        </button>
-      </div>
     </>
   )
 }

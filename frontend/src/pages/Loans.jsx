@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { date } from '../api'
 import { Empty, Icon, Loading, money, percent, productName, sum } from '../components/Ui'
 
-export default function Loans({ finance, today, onFinance }) {
+export default function Loans({ finance, today }) {
   const [selected, setSelected] = useState('all')
   if (!finance) return <Loading />
   const loans = finance.loans
@@ -15,12 +15,7 @@ export default function Loans({ finance, today, onFinance }) {
       <div className="page-heading">
         <div>
           <h1>Кредитная нагрузка</h1>
-          <p className="subtitle">Все обязательства и ближайшие списания — в одном месте.</p>
         </div>
-        <button className="secondary" onClick={onFinance}>
-          <Icon name="plus" size={18} />
-          Новое финансирование
-        </button>
       </div>
       <div className="summary-cards">
         <div className="card blue">
@@ -144,10 +139,6 @@ export default function Loans({ finance, today, onFinance }) {
               </div>
             ))}
           </section>
-          <p className="data-note">
-            Демонстрационные обязательства синтетические. Списание средств здесь не выполняется;
-            показаны суммы и даты ближайших платежей.
-          </p>
         </>
       )}
     </section>

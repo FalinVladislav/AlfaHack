@@ -1,14 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, patch, post, rub } from '../api'
+import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
 import { Empty, Icon, Loading, Progress, money, percent, purposes } from '../components/Ui'
-
-const quoteReasons = {
-  AMOUNT_OUT_OF_RANGE: 'Сумма вне лимита',
-  TERM_OUT_OF_RANGE: 'Срок вне диапазона',
-  TOO_LATE: 'Выберите более позднюю дату',
-  PURPOSE_MISMATCH: 'Для другой цели',
-}
 
 function RangeField({ id, label, value, onChange, min, max, step = 1, unit }) {
   const fill = Math.max(0, Math.min(100, ((Number(value) - min) / Math.max(max - min, 1)) * 100))
@@ -54,7 +47,6 @@ export default function FinancingWizard({
   me,
   finance,
   dashboard,
-  drafts,
   onNavigate,
   run,
   busy,
@@ -80,21 +72,6 @@ export default function FinancingWizard({
   const queue = useRef(Promise.resolve())
   const requestKey = useRef(null)
   const storageKey = (id) => `credit-goal:${me.key || me.account_key}:${id}`
-
-  function selectPurpose(purpose) {
-    const eligible = finance.products.filter((product) => product.type === purpose)
-    const minAmount = Math.min(...eligible.map((product) => Number(product.min_amount)))
-    const maxAmount = Math.max(...eligible.map((product) => Number(product.max_amount)))
-    const minTerm = Math.min(...eligible.map((product) => product.min_term))
-    const maxTerm = Math.max(...eligible.map((product) => product.max_term))
-    const termField = purpose === 'CASH_GAP' ? 'duration_days' : 'term_months'
-    setForm((previous) => ({
-      ...previous,
-      purpose,
-      amount: Math.min(maxAmount, Math.max(minAmount, Number(previous.amount) || minAmount)),
-      [termField]: Math.min(maxTerm, Math.max(minTerm, Number(previous[termField]) || minTerm)),
-    }))
-  }
 
   useEffect(() => {
     if (!draftId) {
@@ -304,41 +281,11 @@ export default function FinancingWizard({
                 />
                 <span className="counter">{goal.length}/500</span>
               </div>
-              <fieldset className="purpose-field">
-                <legend>Направление финансирования</legend>
-                <div className="purpose-options">
-                  {Object.entries(purposes).map(([value, label]) => (
-                    <label className={form.purpose === value ? 'selected' : ''} key={value}>
-                      <input
-                        type="radio"
-                        name="purpose"
-                        value={value}
-                        checked={form.purpose === value}
-                        onChange={() => selectPurpose(value)}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
               <button className="primary full" disabled={busy || goal.trim().length < 5}>
                 Далее
                 <Icon name="arrow" />
               </button>
             </form>
-            {!draftId && drafts.some((item) => item.status === 'ACTIVE') && (
-              <details className="saved-drafts">
-                <summary>Продолжить сохранённую заявку</summary>
-                {drafts
-                  .filter((item) => item.status === 'ACTIVE')
-                  .map((item) => (
-                    <button key={item.id} onClick={() => onNavigate(`financing/${item.id}/2`)}>
-                      {purposes[item.purpose] || 'Новая заявка'} · {money(item.amount)}
-                      <Icon name="arrow" size={18} />
-                    </button>
-                  ))}
-              </details>
-            )}
           </div>
           <Mascot kind="consultant" className="stage-mascot" />
         </section>
@@ -350,17 +297,8 @@ export default function FinancingWizard({
               <br className="desktop-break" /> и срока выплаты
             </h1>
             <p className="subtitle">
-              {chosen
-                ? `Ставка: ${percent(chosen.annual_rate)} годовых`
-                : 'Подберём условия под вашу задачу'}
+              {chosen ? `Ставка: ${percent(chosen.annual_rate)} годовых` : 'Ставка: —'}
             </p>
-            <button
-              className="text-button goal-link"
-              onClick={() => onNavigate(`financing/${draftId}/1`)}
-            >
-              {goal || purposes[form.purpose]}
-              <Icon name="back" size={16} />
-            </button>
             <RangeField
               id="credit-amount"
               label="Сумма кредита"
@@ -432,44 +370,8 @@ export default function FinancingWizard({
                 </strong>
               </div>
             </div>
-            {quotes && (
-              <details className="offer-options" open={!chosen}>
-                <summary>Сравнить предложения</summary>
-                {quotes.options
-                  .filter((option) =>
-                    products.some((product) => product.product_id === option.product_id),
-                  )
-                  .map((option) => (
-                    <label
-                      className={`quote-option ${selected === option.quote_id && option.quote_id ? 'selected' : ''}`}
-                      key={option.product_id}
-                    >
-                      <input
-                        type="radio"
-                        name="quote"
-                        checked={!!option.quote_id && selected === option.quote_id}
-                        disabled={!option.quote_id || calculating}
-                        onChange={() => {
-                          setSelected(option.quote_id)
-                          setAnalysis(null)
-                          requestKey.current = null
-                        }}
-                      />
-                      <span>
-                        <strong>{option.name}</strong>
-                        <small>
-                          {option.quote_id
-                            ? `${percent(option.annual_rate)} · возврат ${money(option.total_repay)}`
-                            : quoteReasons[option.reason_code] || option.reason_code}
-                        </small>
-                      </span>
-                    </label>
-                  ))}
-              </details>
-            )}
             {chosen && (
               <>
-                <PaymentSchedule option={chosen} />
                 <button
                   className="text-button"
                   disabled={busy || calculating}
@@ -523,35 +425,5 @@ export default function FinancingWizard({
         </section>
       )}
     </>
-  )
-}
-
-function PaymentSchedule({ option }) {
-  return (
-    <details className="payment-schedule">
-      <summary>График платежей · {option.schedule?.length}</summary>
-      <div className="table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Период</th>
-              <th>Платёж</th>
-              <th>Проценты</th>
-              <th>Остаток</th>
-            </tr>
-          </thead>
-          <tbody>
-            {option.schedule?.map((row) => (
-              <tr key={row.period}>
-                <td>{row.period}</td>
-                <td>{rub(row.payment)}</td>
-                <td>{rub(row.interest)}</td>
-                <td>{rub(row.remaining)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
   )
 }

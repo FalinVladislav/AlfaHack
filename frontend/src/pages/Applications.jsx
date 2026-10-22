@@ -120,11 +120,6 @@ export default function Applications({
         <div className="page-heading">
           <div>
             <h1>{client ? 'Заявки и кредиты' : 'Очередь заявок'}</h1>
-            <p className="subtitle">
-              {client
-                ? 'Ваши запросы и решения по финансированию.'
-                : 'Проверка данных и принятие решений.'}
-            </p>
           </div>
           {client && (
             <button className="primary compact" onClick={() => onFinance()}>
@@ -204,10 +199,6 @@ export default function Applications({
             <span className="eyebrow">ЗАЯВКА № {detail.id.slice(0, 8).toUpperCase()}</span>
             <h1>{stageTitles[detail.status] || statuses[detail.status]}</h1>
           </div>
-          <button className="text-button" onClick={() => onNavigate('applications')}>
-            <Icon name="back" size={18} />
-            Все заявки
-          </button>
         </div>
         <div className="status-layout">
           <section className="surface">

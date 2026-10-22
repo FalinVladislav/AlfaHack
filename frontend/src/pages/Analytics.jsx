@@ -107,7 +107,6 @@ export default function Analytics({ focus, finance, dashboard, onFinance, onNavi
       <div className="page-heading">
         <div>
           <h1>{title}</h1>
-          <p className="subtitle">Финансы вашего бизнеса</p>
         </div>
         <div className="tabs" aria-label="Период графика">
           {[3, 6].map((value) => (
