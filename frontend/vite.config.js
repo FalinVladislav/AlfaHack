@@ -5,6 +5,9 @@ export default defineConfig({
     proxy: {
       '/api': process.env.API_PROXY || 'http://localhost:8080',
       '/actuator': process.env.API_PROXY || 'http://localhost:8080',
+      '/swagger-ui': process.env.API_PROXY || 'http://localhost:8080',
+      '/api-docs': process.env.API_PROXY || 'http://localhost:8080',
+      '/webjars': process.env.API_PROXY || 'http://localhost:8080',
     },
   },
 })

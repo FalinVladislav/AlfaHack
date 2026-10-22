@@ -2,6 +2,13 @@ openapi: 3.0.3
 info:
   title: Кредитный кабинет — локальный API
   version: 1.1.0
+  description: |
+    Сначала выполните POST /auth/sessions с логином stable, gap или staff и паролем Alfa2026!.
+    Браузер сохраняет HttpOnly cookie cabinet_session. Swagger UI автоматически получает
+    CSRF-токен из ответа входа или GET /me и передаёт X-CSRF-Token в изменяющих запросах.
+    После перезагрузки Swagger UI существующая сессия продолжает работать.
+    Для операций с Idempotency-Key указывайте уникальный ключ для нового действия;
+    при повторе того же действия используйте прежний ключ.
 servers:
   - url: /api/v1
 components:
@@ -10,6 +17,11 @@ components:
       type: apiKey
       in: cookie
       name: cabinet_session
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Swagger UI подставляет токен текущей сессии автоматически.
   parameters:
     id:
       name: id
@@ -133,13 +145,16 @@ paths:
               properties:
                 login: {type: string, enum: [stable, gap, staff]}
                 password: {type: string, format: password}
+            example:
+              login: stable
+              password: Alfa2026!
       responses:
         '200': {$ref: '#/components/responses/ok'}
         '401': {description: Неверный логин или пароль}
   /logout:
     post:
       summary: Завершить сессию
-      parameters: [{name: X-CSRF-Token, in: header, required: true, schema: {type: string}}]
+      security: [{sessionCookie: [], csrfHeader: []}]
       responses:
         '200': {$ref: '#/components/responses/ok'}
   /me:

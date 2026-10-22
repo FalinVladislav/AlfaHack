@@ -32,6 +32,19 @@ npm run dev
 
 Откройте `http://localhost:5173`. Если порт API 8080 занят, задайте `PORT=18080` перед запуском Java и `API_PROXY=http://localhost:18080` перед запуском Vite. На PowerShell: `$env:PORT='18080'` и `$env:API_PROXY='http://localhost:18080'` соответственно.
 
+## Swagger для frontend-разработчиков
+
+- Docker Compose: [Swagger UI](http://localhost:8088/swagger-ui/index.html).
+- Локальный backend: [Swagger UI](http://localhost:8080/swagger-ui/index.html).
+- Vite с запущенным backend: [Swagger UI](http://localhost:5173/swagger-ui/index.html).
+- OpenAPI YAML для импорта в Postman или генерации клиента: `/api-docs/openapi.yaml` на том же адресе.
+
+В Swagger UI раскройте `POST /auth/sessions`, нажмите **Try it out**, затем **Execute**. Пример уже содержит `stable` / `Alfa2026!`; можно выбрать `gap` или `staff`. Cookie сессии сохраняется браузером, CSRF-токен добавляется автоматически. Можно также открыть Swagger после обычного входа в приложение на том же адресе. Для изменяющих запросов защита CSRF не отключалась; операции с `Idempotency-Key` требуют заполнения этого заголовка. Не задавайте cookie вручную через Authorize: она HttpOnly и устанавливается сервером.
+
+Источник контракта — `backend/docs/openapi.yaml`: Maven упаковывает его в JAR без отдельной копии в исходниках. Swagger UI также входит в сборку и не требует CDN или внешнего валидатора. После изменения контракта пересоберите backend; в Docker — `docker compose up --build -d`. Схема поддерживается вручную, при изменении API обновляйте этот файл. Не публикуйте демонстрационный Swagger и учётные данные во внешнюю среду без настройки доступа.
+
+Проверки: `mvn -f backend/pom.xml test` и `node --test scripts/tests/swagger-ui.test.cjs`.
+
 ## API моделей
 
 Провайдер модели и его настройки вынесены в отдельную директорию [inference](inference/README.md). В этой ветке сервис не подключён к Compose и не требуется для запуска приложения. Backend использует абстракцию `LanguageModel`; HTTP-адаптер обращается к `POST /v1/chat` отдельного сервиса, если задан `MODEL_API_URL`. Таймаут задаётся через `MODEL_API_TIMEOUT_SECONDS`.
