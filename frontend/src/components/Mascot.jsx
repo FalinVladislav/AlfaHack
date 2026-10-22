@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 const posters = {
-  guide: '/mascots/guide.webp',
-  consultant: '/mascots/kons.webp',
-  manager: '/mascots/manager.webp',
+  guide: '/mascots/guide-transparent.webp',
+  consultant: '/mascots/consultant-transparent.webp',
+  manager: '/mascots/manager-transparent.webp',
 }
 
 export default function Mascot({
@@ -15,6 +15,8 @@ export default function Mascot({
   const videoRef = useRef(null)
   const hostRef = useRef(null)
   const [failed, setFailed] = useState(false)
+  const imageSource =
+    staticImage && kind === 'consultant' ? '/mascots/kons-static.png' : posters[kind]
 
   useEffect(() => {
     if (staticImage) return
@@ -58,11 +60,11 @@ export default function Mascot({
       role="img"
       aria-label={label}
     >
-      {(staticImage || failed) && <img className="mascot-poster" src={posters[kind]} alt="" />}
+      {(staticImage || failed) && <img className="mascot-poster" src={imageSource} alt="" />}
       {!staticImage && (
         <video
           ref={videoRef}
-          src={`/mascots/${kind}.webm`}
+          src={`/mascots/${kind}-transparent.webm`}
           poster={posters[kind]}
           hidden={failed}
           muted

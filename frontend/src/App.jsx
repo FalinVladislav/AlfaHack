@@ -345,9 +345,13 @@ function Login({ busy, error, onLogin }) {
   const [showPassword, setShowPassword] = useState(false)
   return (
     <main className="login-page">
-      <div className="alfa-mark" aria-label="Альфа-Банк">
-        А
-      </div>
+      <img
+        className="alfa-mark"
+        src="/icons/logo_alfa-bank-sign-square_m_color.svg"
+        alt="Альфа-Банк"
+        width="48"
+        height="48"
+      />
       <section className="login-form-wrap">
         <form
           className="login-form"

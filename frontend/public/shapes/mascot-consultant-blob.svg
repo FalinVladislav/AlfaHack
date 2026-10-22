@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 620" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="backdrop" x1="25" y1="45" x2="375" y2="585" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF1C9" />
+      <stop offset="1" stop-color="#D2E7D8" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M225 18
+       C308 2 377 65 370 149
+       C362 226 405 256 388 340
+       C374 418 345 427 353 492
+       C363 573 298 612 211 607
+       C118 625 34 596 24 522
+       C14 450 49 415 23 341
+       C-4 261 7 162 68 99
+       C112 52 160 31 225 18Z"
+    fill="url(#backdrop)"
+  />
+</svg>

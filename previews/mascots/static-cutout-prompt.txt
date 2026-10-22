@@ -1,0 +1,6 @@
+Tool: built-in imagegen, edit mode, transparent_background=true.
+Input: user-attached frontal consultant mascot image with light-green background.
+Output used by the application: frontend/public/mascots/kons-static.png.
+
+Prompt:
+Use case: background-extraction. Edit target: the most recent user-attached portrait image of the yellow 3D mascot wearing dark green goggles, black headphones, orange hair, a cream coat, red inner layer and holding a red phone. Remove ONLY the flat light-green background, producing a clean cutout on a genuinely transparent alpha background. Preserve the exact original character, framing, front-facing pose, proportions, colors, details, accessories, phone, lighting and image composition. Do not redesign, re-pose, add objects, add text or invent missing body parts. Preserve the existing lower framing; the application will apply its own gently curved bottom mask. Asset type: static mascot PNG for a desktop banking dashboard. Return a clean anti-aliased transparent cutout without a green halo, fake checkerboard, backdrop or shadow.
