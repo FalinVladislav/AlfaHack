@@ -80,6 +80,11 @@ assert stable.call("POST", "/drafts", expected=403)["code"] == "CSRF"
 stable.csrf = saved_csrf
 assert len(stable.call("GET", "/insights")["cards"]) == 4
 assert len(stable.call("GET", "/cashflow/summary")["months"]) == 6
+finance = stable.call("GET", "/finance/overview")
+assert finance["data_origin"] == "SYNTHETIC" and len(finance["months"]) == 6
+assert len(finance["transactions"]) == 30 and len(finance["products"]) == 5
+assert all(row["company_id"] == "STABLE" for row in finance["transactions"] + finance["loans"] + finance["needs"])
+assert len([loan for loan in stable.call("GET", "/finance/loans") if loan["source"] == "EXISTING"]) == 2
 gap = Client()
 assert gap.login("gap")["company_id"] == "GAP"
 f = gap.call("GET", "/cashflow/forecast?horizon=30D&scenario=BASE")
@@ -90,6 +95,7 @@ assert len(analysis["without_credit"]) == 30 and len(analysis["with_credit"]) ==
 assert gap.call("GET", "/applications/" + app["id"], expected=404)["code"] == "NOT_FOUND"
 staff = Client()
 staff.login("staff")
+assert staff.call("GET", "/finance/overview", expected=403)["code"] == "FORBIDDEN"
 assert len(staff.call("GET", "/synthetic/profiles")) == 7
 assert stable.call("GET", "/synthetic/profiles", expected=403)["code"] == "FORBIDDEN"
 assert staff.call("POST", "/applications/" + app["id"] + "/checks", {"demo_profile": "MISSING_INFO"})["status"] == "NEEDS_INFO"
@@ -114,6 +120,9 @@ key = uuid.uuid4().hex
 assert stable.call("POST", "/applications/" + app["id"] + "/disburse", key=key)["status"] == "DISBURSED"
 assert stable.call("POST", "/applications/" + app["id"] + "/disburse", key=key)["status"] == "DISBURSED"
 assert len([loan for loan in stable.call("GET", "/loans") if loan["application_id"] == app["id"]]) == 1
+issued_loan = next(loan for loan in stable.call("GET", "/loans") if loan["application_id"] == app["id"])
+finance_loan = next(loan for loan in stable.call("GET", "/finance/loans") if loan["id"] == issued_loan["id"])
+assert finance_loan["source"] == "ISSUED" and finance_loan["end_date"]
 counter = draft_and_submit(stable)
 counter = staff.call("POST", "/applications/" + counter["id"] + "/checks", {"demo_profile": "COUNTEROFFER"})
 assert counter["status"] == "COUNTEROFFER" and float(counter["amount"]) < 3000000, counter

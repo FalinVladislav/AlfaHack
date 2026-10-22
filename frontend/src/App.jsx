@@ -1,118 +1,391 @@
-﻿import React, { useEffect, useState } from 'react'
-import { api, post, patch, setCsrf, rub, date } from './api'
+import React, { useEffect, useRef, useState } from 'react'
+import { api, post, setCsrf, date } from './api'
+import { Icon, Loading } from './components/Ui'
+import Mascot from './components/Mascot'
+import Dashboard from './pages/Dashboard'
+import Analytics from './pages/Analytics'
+import Loans from './pages/Loans'
+import FinancingWizard from './pages/FinancingWizard'
+import Applications from './pages/Applications'
 
-const names = { insights: 'Возможности', financing: 'Подать заявку', applications: 'Заявки и кредиты', cashflow: 'Доходы и расходы' }
-const purposes = { EXPANSION: 'Развитие бизнеса', WORKING_CAPITAL: 'Оборотные средства', CASH_GAP: 'Кассовый разрыв' }
-const statuses = { SUBMITTED: 'На рассмотрении', CHECKING: 'Проверка данных', NEEDS_INFO: 'Нужны сведения', APPROVED: 'Одобрена', COUNTEROFFER: 'Новые условия', REJECTED: 'Отказ', OFFER_ACCEPTED: 'Условия приняты', SIGNED: 'Договор подписан', DISBURSED: 'Кредит активен', CLOSED: 'Закрыта' }
-const reasons = { POLICY_PASSED: 'Показатели соответствуют условиям', CURRENT_OVERDUE_30_DAYS: 'Есть просрочка более 30 дней', PAYMENT_LIMIT: 'Платёж превышает доступный денежный поток', RISK_LIMIT: 'Параметры скоринга требуют снижения суммы', UNKNOWN_DEBT: 'Требуется уточнить действующие обязательства', PAYBACK_SHORTFALL: 'На дату возврата недостаточно средств', SOURCE_UNAVAILABLE: 'Источник данных временно недоступен' }
-const key = () => crypto.randomUUID()
-const MASCOT = '/mascot.png'
+function routeFromHash() {
+  const [page = 'home', id = '', step = '1'] = location.hash.replace(/^#\/?/, '').split('/')
+  return {
+    page: ['home', 'analytics', 'loans', 'financing', 'applications'].includes(page)
+      ? page
+      : 'home',
+    id,
+    step: Number(step) || 1,
+  }
+}
 
 export default function App() {
+  const [route, setRoute] = useState(routeFromHash)
   const [me, setMe] = useState(null)
   const [ready, setReady] = useState(false)
-  const [tab, setTab] = useState(location.hash.slice(1).split('/')[0] || 'insights')
-  const [selectedId, setSelectedId] = useState(location.hash.startsWith('#applications/') ? location.hash.split('/')[1] : '')
-  const [draft, setDraft] = useState(null)
+  const [finance, setFinance] = useState(null)
+  const [insights, setInsights] = useState(null)
+  const [dashboard, setDashboard] = useState(null)
   const [drafts, setDrafts] = useState([])
   const [applications, setApplications] = useState([])
-  const [loans, setLoans] = useState([])
-  const [detail, setDetail] = useState(null)
-  const [insights, setInsights] = useState(null)
-  const [cashflow, setCashflow] = useState(null)
-  const [dashboard, setDashboard] = useState(null)
-  const [error, setError] = useState('')
+  const [initialNeed, setInitialNeed] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
-  const refresh = () => setRevision(v => v + 1)
-  const go = (target, id = '') => { location.hash = target + (id ? '/' + id : ''); setTab(target); setSelectedId(target === 'applications' ? id : ''); setError('') }
-  const work = async action => { setBusy(true); setError(''); try { await action(); refresh() } catch (e) { setError(e.message) } finally { setBusy(false) } }
-  useEffect(() => { api('/me').then(u => { setMe(u); setCsrf(u.csrf) }).catch(() => setMe(null)).finally(() => setReady(true)) }, [])
+  const refresh = () => setRevision((value) => value + 1)
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setRoute(routeFromHash())
+      setError('')
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    api('/me')
+      .then((user) => {
+        setMe(user)
+        setCsrf(user.csrf)
+      })
+      .catch(() => {})
+      .finally(() => setReady(true))
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
   useEffect(() => {
     if (!me) return
     let active = true
-    const put = (call, setter) => call.then(v => { if (active) setter(v) }).catch(e => { if (active) setError(e.message) })
-    put(api('/applications'), setApplications)
+    const load = (promise, setter) =>
+      promise
+        .then((result) => {
+          if (active) setter(result)
+        })
+        .catch((reason) => {
+          if (active) setError(reason.message)
+        })
+    load(api('/applications'), setApplications)
     if (me.role === 'CLIENT') {
-      put(api('/drafts'), setDrafts); put(api('/loans'), setLoans); put(api('/insights'), setInsights)
-      put(api('/cashflow/summary'), setCashflow); put(api('/dashboard'), setDashboard)
+      load(api('/finance/overview'), setFinance)
+      load(api('/insights'), setInsights)
+      load(api('/dashboard'), setDashboard)
+      load(api('/drafts'), setDrafts)
     }
-    if (selectedId) put(api('/applications/' + selectedId), setDetail)
-    return () => { active = false }
-  }, [me, revision, selectedId])
-  useEffect(() => { if (!me || !selectedId || !detail || !['SUBMITTED', 'CHECKING', 'NEEDS_INFO'].includes(detail.status)) return; const timer = setInterval(refresh, 3500); return () => clearInterval(timer) }, [me, selectedId, detail?.status])
-  useEffect(() => { if (me?.role === 'CLIENT' && location.hash.startsWith('#financing/')) api('/drafts/' + location.hash.split('/')[1]).then(setDraft).catch(e => setError(e.message)) }, [me])
-  const login = (login, password) => work(async () => { const session = await post('/auth/sessions', { login, password }); setCsrf(session.csrf); const user = await api('/me'); setMe(user); setDraft(null); setDetail(null); go(user.role === 'STAFF' ? 'applications' : 'insights') })
-  const logout = () => work(async () => { await post('/logout'); setCsrf(''); setMe(null); setDraft(null); setDetail(null); go('insights') })
-  const createDraft = async initial => { const base = await post('/drafts'); const result = initial ? await patch('/drafts/' + base.id, { expected_version: base.version, ...initial }) : base; setDraft(result); go('financing', result.id); refresh(); return result }
-  const openDraft = id => work(async () => { setDraft(await api('/drafts/' + id)); go('financing', id) })
-  const openApp = id => { setDetail(null); go('applications', id) }
-  if (!ready) return <div className="loading-screen">Загружаем кабинет…</div>
-  if (!me) return <Login busy={busy} error={error} onLogin={login}/>
-  const client = me.role === 'CLIENT'
-  const sections = client ? Object.keys(names) : ['applications']
-  return <div className="app-shell">
-    <header className="app-header"><div className="brand">альфа<span>◉</span>бизнес</div><nav className="main-nav">{sections.map(s => <button key={s} className={tab === s ? 'active' : ''} onClick={() => go(s)}>{client ? names[s] : 'Очередь заявок'}</button>)}</nav><div className="header-account"><div className="header-avatar">{me.label?.slice(0,1)}</div><div><strong>{me.label}</strong><small>{client ? 'Бизнес-клиент' : 'Кредитный специалист'}</small></div><button className="exit-button" title="Выйти" onClick={logout}>↗</button></div></header>
-    <main className="workspace">{error && <div className="error"><span>{error}</span><button onClick={() => setError('')}>×</button></div>}
-      {tab === 'insights' && client && <Insights data={insights} dashboard={dashboard} onCreate={initial => work(() => createDraft(initial))} busy={busy}/>}
-      {tab === 'financing' && client && <Financing draft={draft} drafts={drafts} setDraft={setDraft} createDraft={initial => work(() => createDraft(initial))} openDraft={openDraft} openApp={openApp} work={work} busy={busy}/>}
-      {tab === 'applications' && <ApplicationsView applications={applications} loans={loans} detail={detail} selectedId={selectedId} openApp={openApp} back={() => { setDetail(null); go('applications') }} client={client} busy={busy} work={work} onNew={() => go('financing')}/>}
-      {tab === 'cashflow' && client && <Cashflow data={cashflow} dashboard={dashboard} onFinance={() => go('financing')}/>}
-    </main>
-  </div>
+    return () => {
+      active = false
+    }
+  }, [me, revision])
+
+  function navigate(target) {
+    location.hash = target
+    setRoute(routeFromHash())
+    setError('')
+    window.scrollTo(0, 0)
+  }
+
+  async function run(action) {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await action()
+      refresh()
+      return result
+    } catch (reason) {
+      setError(reason.message)
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function login(loginName, password) {
+    await run(async () => {
+      const session = await post('/auth/sessions', { login: loginName, password })
+      setCsrf(session.csrf)
+      const user = await api('/me')
+      setFinance(null)
+      setDashboard(null)
+      setInsights(null)
+      setDrafts([])
+      setApplications([])
+      setMe(user)
+      navigate(user.role === 'STAFF' ? 'applications' : 'home')
+    })
+  }
+
+  function logout() {
+    return run(async () => {
+      await post('/logout')
+      setCsrf('')
+      setMe(null)
+      setFinance(null)
+      setInitialNeed(null)
+      navigate('home')
+    })
+  }
+
+  function beginFinancing(need = null) {
+    setInitialNeed(need)
+    navigate('financing')
+  }
+  if (!ready) return <Loading />
+  if (!me) return <Login busy={busy} error={error} onLogin={login} />
+  const page = me.role === 'CLIENT' ? route.page : 'applications'
+
+  return (
+    <div className="app-shell">
+      <Header
+        me={me}
+        home={page === 'home'}
+        onNavigate={navigate}
+        onLogout={logout}
+        applications={applications}
+        finance={finance}
+        busy={busy}
+      />
+      <main className="workspace" id="main-content">
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            <button aria-label="Закрыть уведомление" onClick={() => setError('')}>
+              <Icon name="close" />
+            </button>
+          </div>
+        )}
+        {page === 'home' && (
+          <Dashboard
+            finance={finance}
+            insights={insights}
+            onNavigate={navigate}
+            onFinance={beginFinancing}
+            busy={busy}
+          />
+        )}
+        {page === 'analytics' && (
+          <Analytics
+            focus={route.id}
+            finance={finance}
+            dashboard={dashboard}
+            onFinance={() => beginFinancing()}
+            onNavigate={navigate}
+          />
+        )}
+        {page === 'loans' && (
+          <Loans
+            finance={finance}
+            today={dashboard?.demo_today}
+            onFinance={() => beginFinancing()}
+          />
+        )}
+        {page === 'financing' && (
+          <FinancingWizard
+            draftId={route.id}
+            step={route.step}
+            initialNeed={initialNeed}
+            me={me}
+            finance={finance}
+            dashboard={dashboard}
+            drafts={drafts}
+            onNavigate={navigate}
+            run={run}
+            busy={busy}
+            onError={setError}
+          />
+        )}
+        {page === 'applications' && (
+          <Applications
+            applications={applications}
+            id={route.id}
+            me={me}
+            revision={revision}
+            onNavigate={navigate}
+            onFinance={beginFinancing}
+            run={run}
+            busy={busy}
+            onError={setError}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
+
+function Header({ me, home, onNavigate, onLogout, applications, finance, busy }) {
+  const [popover, setPopover] = useState('')
+  const ref = useRef(null)
+  const actionable = applications.filter((application) =>
+    ['NEEDS_INFO', 'APPROVED', 'COUNTEROFFER', 'OFFER_ACCEPTED', 'SIGNED'].includes(
+      application.status,
+    ),
+  )
+  useEffect(() => {
+    const close = (event) => {
+      if (!ref.current?.contains(event.target)) setPopover('')
+    }
+    const escape = (event) => {
+      if (event.key === 'Escape') setPopover('')
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [])
+  function go(target) {
+    setPopover('')
+    onNavigate(target)
+  }
+  return (
+    <header className="app-header" ref={ref}>
+      <a className="skip-link" href="#main-content">
+        К содержимому
+      </a>
+      {!home && me.role === 'CLIENT' && (
+        <button className="back-link" onClick={() => go('home')}>
+          <Icon name="back" size={19} />
+          На главную
+        </button>
+      )}
+      {me.role === 'STAFF' && (
+        <span className="staff-label">Кредитный кабинет · Рабочее место</span>
+      )}
+      <div className="account">
+        <button
+          className="bell"
+          aria-label="Уведомления"
+          aria-expanded={popover === 'notifications'}
+          onClick={() => setPopover((value) => (value === 'notifications' ? '' : 'notifications'))}
+        >
+          <Icon name="bell" size={30} />
+          {actionable.length > 0 && <i />}
+        </button>
+        <span className="account-divider" />
+        <button
+          className="profile-button"
+          aria-label="Меню профиля"
+          aria-expanded={popover === 'profile'}
+          onClick={() => setPopover((value) => (value === 'profile' ? '' : 'profile'))}
+        >
+          <span className="profile-avatar">{me.label?.slice(0, 1)}</span>
+          <Icon name="down" size={20} />
+        </button>
+      </div>
+      {popover === 'profile' && (
+        <div className="popover profile-menu">
+          <strong>{me.label}</strong>
+          <span className="muted">
+            {me.role === 'CLIENT' ? 'Предприниматель' : 'Кредитный специалист'}
+          </span>
+          {me.role === 'CLIENT' && (
+            <>
+              <button onClick={() => go('home')}>Мои финансы</button>
+              <button onClick={() => go('loans')}>Кредитная нагрузка</button>
+              <button onClick={() => go('analytics/cashflow')}>Доходы и расходы</button>
+            </>
+          )}
+          <button onClick={() => go('applications')}>Заявки и кредиты</button>
+          <button
+            onClick={() => {
+              setPopover('')
+              onLogout()
+            }}
+            disabled={busy}
+          >
+            <Icon name="exit" size={18} />
+            Выйти из кабинета
+          </button>
+        </div>
+      )}
+      {popover === 'notifications' && (
+        <div className="popover notifications">
+          <h3>Уведомления</h3>
+          {actionable.length ? (
+            actionable.slice(0, 4).map((application) => (
+              <button key={application.id} onClick={() => go('applications/' + application.id)}>
+                Заявка № {application.id.slice(0, 8).toUpperCase()}
+                <small>
+                  Есть следующий шаг <Icon name="arrow" size={14} />
+                </small>
+              </button>
+            ))
+          ) : (
+            <p>Новых действий по заявкам нет.</p>
+          )}
+          {finance?.loans[0] && (
+            <p>Ближайшее списание по кредиту — {date(finance.loans[0].next_payment_date)}.</p>
+          )}
+        </div>
+      )}
+    </header>
+  )
 }
 
 function Login({ busy, error, onLogin }) {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
-  return <div className="login-page"><div className="login-form-wrap"><div className="brand">альфа<span>◉</span>бизнес</div><div className="login-form"><div className="eyebrow">КРЕДИТНЫЙ КАБИНЕТ ДЛЯ БИЗНЕСА</div><h1>Добро пожаловать</h1><p>Управляйте финансированием бизнеса в одном месте.</p><form onSubmit={e => { e.preventDefault(); onLogin(login.trim(), password) }}><label>Логин<input autoComplete="username" value={login} onChange={e => setLogin(e.target.value)} placeholder="Введите логин" required/></label><label>Пароль<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Введите пароль" required/></label>{error && <div className="error">{error}</div>}<button className="primary full" disabled={busy}>Войти в кабинет <span>→</span></button></form></div><div className="login-foot">Безопасный вход в кредитный кабинет</div></div><div className="login-visual"><div className="login-visual-copy"><span className="visual-chip">Финансирование бизнеса</span><h2>Возможности для<br/>вашего следующего шага.</h2><p>Идеи, заявки и финансовая картина — рядом.</p></div><img src={MASCOT} alt="Маскот кредитного кабинета"/></div></div>
+  return (
+    <main className="login-page">
+      <section className="login-form-wrap">
+        <div className="brand">
+          альфа<span>бизнес</span>
+        </div>
+        <form
+          className="login-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onLogin(login.trim(), password)
+          }}
+        >
+          <span className="eyebrow">КРЕДИТНЫЙ КАБИНЕТ</span>
+          <h1>
+            Бизнес начинается
+            <br />с возможностей.
+          </h1>
+          <p>Войдите, чтобы увидеть финансовую картину и сделать следующий шаг.</p>
+          <label>
+            Логин
+            <input
+              value={login}
+              onChange={(event) => setLogin(event.target.value)}
+              autoComplete="username"
+              placeholder="Введите логин"
+              required
+            />
+          </label>
+          <label>
+            Пароль
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              autoComplete="current-password"
+              placeholder="Введите пароль"
+              required
+            />
+          </label>
+          {error && (
+            <div className="error-banner" role="alert">
+              {error}
+            </div>
+          )}
+          <button className="primary full" disabled={busy}>
+            {busy ? 'Входим…' : 'Войти в кабинет'}
+            <Icon name="arrow" />
+          </button>
+          <small className="demo-note">Демонстрационный кабинет · Синтетические данные</small>
+        </form>
+        <span className="login-foot">Ваши финансы. Ваш следующий шаг.</span>
+      </section>
+      <aside className="login-visual">
+        <div>
+          <span className="visual-chip">Взгляд вперёд</span>
+          <h2>
+            Найдём возможности
+            <br />
+            для вашего бизнеса.
+          </h2>
+        </div>
+        <Mascot className="login-mascot" kind="manager" />
+      </aside>
+    </main>
+  )
 }
-
-function Insights({ data, dashboard, onCreate, busy }) {
-  if (!data || !dashboard) return <Loading/>
-  const cards = data.cards || []
-  return <><div className="page-heading"><div><div className="eyebrow">ВАШ СЛЕДУЮЩИЙ ШАГ</div><h1>Возможности для бизнеса</h1><p>Идеи финансирования на основе денежных потоков и сценариев развития.</p></div><div className="heading-balance"><small>Доступный остаток</small><strong>{rub(dashboard.company.balance)}</strong></div></div>
-    <div className="opportunity-grid"><div className="opportunity-cards">{cards.slice(0,4).map((c,i) => <article className={'opportunity-card tone-' + c.tone} key={c.title}><div className="opportunity-top"><span className="opportunity-number">0{i+1}</span><span className="signal">{c.signal}</span></div><h2>{c.title}</h2><p>{c.text}</p><div className="opportunity-bottom"><div><small>{i === 0 ? 'Возможность' : 'Направление'}</small><strong>{c.highlight}</strong></div><button aria-label={'Создать заявку: '+c.title} disabled={busy} onClick={() => onCreate({ purpose: c.purpose, amount: c.amount, term_months: c.purpose === 'CASH_GAP' ? null : c.term_months, duration_days: c.purpose === 'CASH_GAP' ? c.term_months : null, needed_by: '2026-11-01' })}>↗</button></div></article>)}</div><aside className="mascot-panel"><div className="mascot-panel-copy"><span className="panel-kicker">ВЗГЛЯД ВПЕРЁД</span><h2>Найдите точку роста</h2><p>Изучите сценарии и рассчитайте условия под свою задачу.</p></div><img src={MASCOT} alt=""/><button onClick={() => onCreate()} disabled={busy}>Начать подбор <span>→</span></button></aside></div>
-    <div className="insight-footer"><span>✦</span><p>{data.basis}</p></div></>
-}
-
-function Financing({ draft, drafts, setDraft, createDraft, openDraft, openApp, work, busy }) {
-  const [form, setForm] = useState({ purpose: 'EXPANSION', amount: '3000000', term_months: '36', duration_days: '30', needed_by: '2026-11-01' })
-  const [quotes, setQuotes] = useState(null)
-  const [selected, setSelected] = useState('')
-  const [consent, setConsent] = useState(false)
-  useEffect(() => { if (draft) { setForm({ purpose: draft.purpose || 'EXPANSION', amount: draft.amount || '', term_months: draft.term_months || '', duration_days: draft.duration_days || '', needed_by: draft.needed_by || '2026-11-01' }); setQuotes(null); setSelected('') } }, [draft?.id, draft?.version])
-  const save = () => work(async () => { const updated = await patch('/drafts/' + draft.id, { expected_version: draft.version, purpose: form.purpose, amount: form.amount, needed_by: form.needed_by, term_months: form.purpose === 'CASH_GAP' ? null : Number(form.term_months), duration_days: form.purpose === 'CASH_GAP' ? Number(form.duration_days) : null }); setDraft(updated); setQuotes(null) })
-  const calculate = () => work(async () => { const result = await post('/drafts/' + draft.id + '/quotes', { expected_version: draft.version }); setQuotes(result); setSelected(result.options.find(o => o.quote_id)?.quote_id || '') })
-  const submit = () => work(async () => { const result = await post('/applications', { draft_id: draft.id, expected_version: draft.version, quote_id: selected, consents: consent }, key()); openApp(result.id) })
-  return <><div className="page-heading"><div><div className="eyebrow">ФИНАНСИРОВАНИЕ</div><h1>Подать заявку на кредит</h1><p>Задайте параметры и сравните доступные условия до отправки.</p></div><button className="secondary" disabled={busy} onClick={() => createDraft()}>+ Новая заявка</button></div>
-    {drafts.length > 0 && <div className="draft-tabs">{drafts.map(d => <button key={d.id} className={draft?.id === d.id ? 'selected' : ''} onClick={() => openDraft(d.id)}>{purposes[d.purpose] || 'Новый запрос'} · {rub(d.amount)}</button>)}</div>}
-    {!draft ? <div className="panel empty"><div className="empty-symbol">↗</div><h2>Начните с вашей цели</h2><p>Укажите сумму и срок, чтобы увидеть предложения по финансированию.</p><button className="primary" onClick={() => createDraft()}>Создать заявку</button></div> : draft.status !== 'ACTIVE' ? <div className="panel empty"><h2>Заявка отправлена</h2><p>Её статус и дальнейшие шаги находятся в разделе «Заявки и кредиты».</p><button className="primary" onClick={() => createDraft()}>Создать новую</button></div> : <div className="finance-grid"><section className="panel form-panel"><div className="section-head"><span>01 / Параметры</span><h2>Расскажите о задаче</h2></div><label>Цель финансирования<select value={form.purpose} onChange={e => setForm({ ...form, purpose: e.target.value })}>{Object.entries(purposes).map(([v,t]) => <option value={v} key={v}>{t}</option>)}</select></label><label>Сумма, ₽<input type="number" min="1" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}/></label><div className="two-fields"><label>Срок, {form.purpose === 'CASH_GAP' ? 'дней' : 'месяцев'}<input type="number" min="1" value={form.purpose === 'CASH_GAP' ? form.duration_days : form.term_months} onChange={e => setForm({ ...form, [form.purpose === 'CASH_GAP' ? 'duration_days' : 'term_months']: e.target.value })}/></label><label>Дата получения<input type="date" value={form.needed_by} onChange={e => setForm({ ...form, needed_by: e.target.value })}/></label></div><button className="primary full" disabled={busy} onClick={save}>Сохранить параметры</button></section><section className="panel result-panel"><div className="section-head"><span>02 / Предложения</span><h2>Выберите условия</h2></div><p>Для одной цели могут отличаться лимит, ставка и общая стоимость.</p><button className="secondary full" disabled={busy} onClick={calculate}>Рассчитать предложения</button>{quotes?.options.filter(o => o.product_id === 'OVERDRAFT' || o.product_id.startsWith('DEVELOPMENT') || o.product_id === 'WORKING_CAPITAL').map(o => <label key={o.product_id} className={'option ' + (selected === o.quote_id ? 'chosen ' : '') + (!o.quote_id ? 'disabled' : '')}><input type="radio" name="quote" disabled={!o.quote_id} checked={selected === o.quote_id} onChange={() => setSelected(o.quote_id)}/><div><strong>{o.name}</strong><small>{o.reason_code ? ({ PURPOSE_MISMATCH: 'Для другой цели', AMOUNT_OUT_OF_RANGE: 'Сумма вне лимита', TERM_OUT_OF_RANGE: 'Срок вне диапазона', TOO_LATE: 'Выберите более позднюю дату' }[o.reason_code] || o.reason_code) : `${(Number(o.annual_rate)*100).toFixed(1)}% годовых · возврат ${rub(o.total_repay)}`}</small>{o.quote_id && <em>{o.product_id === 'OVERDRAFT' ? `Проценты ${rub(o.interest)}` : `Платёж ${rub(o.monthly_payment)} / мес.`}</em>}</div></label>)}{quotes && selected && <PaymentSchedule option={quotes.options.find(o => o.quote_id === selected)}/>} {quotes && selected && <QuoteAnalysis quoteId={selected} busy={busy} work={work}/>} {quotes && <div className="submit-box"><label className="checkbox"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/> Подтверждаю указанные сведения и условия расчёта</label><button className="primary full" disabled={busy || !selected || !consent} onClick={submit}>Отправить заявку →</button></div>}</section></div>}
-  </>
-}
-
-function PaymentSchedule({ option }) { return option?.schedule && <details className="schedule"><summary>График платежей · {option.schedule.length}</summary><div className="schedule-scroll"><table><thead><tr><th>Период</th><th>Платёж</th><th>Проценты</th><th>Остаток</th></tr></thead><tbody>{option.schedule.map(row => <tr key={row.period}><td>{row.period}</td><td>{rub(row.payment)}</td><td>{rub(row.interest)}</td><td>{rub(row.remaining)}</td></tr>)}</tbody></table></div></details> }
-function QuoteAnalysis({ quoteId, busy, work }) { const [data,setData] = useState(null); useEffect(() => setData(null), [quoteId]); return <div className="quote-analysis"><button className="text-button" disabled={busy} onClick={() => work(async () => setData(await post('/quotes/' + quoteId + '/analysis', { horizon: '6M', scenario: 'BASE' })))}>Сравнить денежный план →</button>{data && <div className="analysis-numbers"><div><small>Без кредита · конец периода</small><strong>{rub(data.without_credit.at(-1)?.balance)}</strong></div><div><small>С кредитом · конец периода</small><strong>{rub(data.with_credit.at(-1)?.balance)}</strong></div></div>}</div> }
-
-function ApplicationsView({ applications, loans, detail, selectedId, openApp, back, client, busy, work, onNew }) {
-  const [profile,setProfile] = useState('RETAIL')
-  const [profiles,setProfiles] = useState([])
-  const [file,setFile] = useState(null)
-  const [contract,setContract] = useState(null)
-  useEffect(() => { if (!client) api('/synthetic/profiles').then(setProfiles).catch(() => {}) }, [client])
-  useEffect(() => setContract(null), [selectedId])
-  const action = (path, body, idempotency) => work(() => post('/applications/' + detail.id + path, body, idempotency))
-  const upload = request => work(async () => { if (!file) throw Error('Выберите файл'); const body = new FormData(); body.append('request_id', request.id); body.append('file', file); await api('/applications/' + detail.id + '/documents', { method: 'POST', body }); setFile(null) })
-  return <><div className="page-heading"><div><div className="eyebrow">{client ? 'ВАШЕ ФИНАНСИРОВАНИЕ' : 'РАБОЧЕЕ МЕСТО'}</div><h1>{selectedId ? 'Карточка заявки' : client ? 'Заявки и кредиты' : 'Очередь заявок'}</h1><p>{selectedId ? 'Условия, история и следующий шаг.' : 'Следите за решениями и текущими обязательствами.'}</p></div>{selectedId ? <button className="secondary" onClick={back}>← К списку</button> : client && <button className="primary" onClick={onNew}>Новая заявка →</button>}</div>
-    {!selectedId ? <><div className="summary-strip"><div><small>Заявок</small><strong>{applications.length}</strong></div>{client && <><div><small>Активных кредитов</small><strong>{loans.length}</strong></div><div><small>Остаток долга</small><strong>{rub(loans.reduce((sum,loan) => sum + Number(loan.balance),0))}</strong></div></>}</div>{client && loans.length > 0 && <section className="panel list-section"><h2>Активные кредиты</h2>{loans.map(loan => <div className="loan-row" key={loan.id}><div className="row-icon">↗</div><div><strong>Кредит № {loan.id.slice(0,8).toUpperCase()}</strong><small>Следующий платёж {date(loan.next_payment_date)} · {rub(loan.next_payment_amount)}</small></div><strong>{rub(loan.balance)}</strong><span className="status disbursed">Активен</span></div>)}</section>}<section className="panel list-section"><h2>{client ? 'Заявки' : 'Заявки на проверку'}</h2>{applications.length === 0 ? <div className="list-empty">Пока нет заявок.</div> : applications.map(a => <button className="application-row" key={a.id} onClick={() => openApp(a.id)}><div className="row-icon">▤</div><div className="row-main"><strong>{a.product_id?.startsWith('DEVELOPMENT') ? 'Развитие бизнеса' : a.product_id === 'OVERDRAFT' ? 'Кассовый разрыв' : 'Оборотные средства'}</strong><small>№ {a.id.slice(0,8).toUpperCase()} · {client ? date(a.created_at) : a.company_id}</small></div><strong>{rub(a.amount)}</strong><span className={'status ' + a.status.toLowerCase()}>{statuses[a.status] || a.status}</span><span>→</span></button>)}</section></> : !detail ? <Loading/> : <div className="application-grid"><section className="panel"><div className="app-title"><div><div className="eyebrow">ЗАЯВКА № {detail.id.slice(0,8).toUpperCase()}</div><h2>{statuses[detail.status] || detail.status}</h2></div><span className={'status ' + detail.status.toLowerCase()}>{statuses[detail.status]}</span></div><div className="app-facts"><div><small>Сумма</small><strong>{rub(detail.amount)}</strong></div><div><small>Ставка</small><strong>{(Number(detail.annual_rate)*100).toFixed(1)}%</strong></div><div><small>Срок</small><strong>{detail.duration_days ? detail.duration_days + ' дней' : detail.term_months + ' мес.'}</strong></div><div><small>Возврат</small><strong>{rub(detail.total_repay)}</strong></div></div>{detail.reason_code && <p className="reason"><strong>Основание:</strong> {reasons[detail.reason_code] || detail.reason_code}</p>}{detail.decision_report && <div className="decision"><h3>Результат оценки</h3><p>{detail.decision_report.explanation}</p>{!client && <><strong>Оценка: {detail.decision_report.adjusted_score} / 100</strong><div className="metric-list">{Object.entries(detail.decision_report.metrics || {}).map(([name,m]) => <div key={name}><span>{({ dti:'Долговая нагрузка', ltv:'Залог / сумма', current_ratio:'Текущая ликвидность', profit_margin:'Рентабельность', revenue_growth:'Рост выручки' })[name]}</span><strong>{m.points} / {m.weight}</strong></div>)}</div><small>Льготный коэффициент риска: {detail.decision_report.risk_coefficient}</small></>}</div>}<h3>История заявки</h3><div className="timeline">{detail.events?.map((event,i) => <div key={i}><span className="timeline-dot"/><div><strong>{statuses[event.new_status] || event.new_status}</strong><small>{date(event.created_at)}{event.reason_code ? ' · ' + (reasons[event.reason_code] || event.reason_code) : ''}</small></div></div>)}</div></section><aside className="panel next-panel"><div className="eyebrow">СЛЕДУЮЩИЙ ШАГ</div>{client ? <>{['SUBMITTED','CHECKING'].includes(detail.status) && <p>Заявка рассматривается. Здесь появится решение и дальнейшие действия.</p>}{detail.status === 'NEEDS_INFO' && detail.requests.map(r => <div key={r.id}><h2>Уточните сведения</h2><p>Необходима выписка за {r.period}. Статус: {r.status}.</p><input type="file" accept=".csv" onChange={e => setFile(e.target.files?.[0])}/><button className="secondary full" disabled={busy || !file} onClick={() => upload(r)}>Загрузить документ</button>{r.status === 'VERIFIED' && <button className="primary full" onClick={() => action('/requests/' + r.id + '/complete')}>Продолжить проверку</button>}</div>)}{['APPROVED','COUNTEROFFER'].includes(detail.status) && <><h2>Предложение готово</h2><p>Проверьте параметры перед принятием.</p><button className="primary full" disabled={busy} onClick={() => action('/offer/accept', { offer_version: detail.offer_version }, key())}>Принять условия</button><button className="secondary full" disabled={busy} onClick={() => action('/offer/decline')}>Отклонить</button></>}{detail.status === 'OFFER_ACCEPTED' && <><h2>Договор готов</h2><button className="secondary full" onClick={() => work(async () => setContract(await api('/applications/' + detail.id + '/contract')))}>Посмотреть договор</button>{contract && <div className="contract"><strong>№ {contract.number}</strong><div>Сумма: {rub(contract.amount)}</div><div>Возврат: {rub(contract.total_repay)}</div></div>}<button className="primary full" disabled={busy} onClick={() => action('/contract/sign', { confirmation: true }, key())}>Подтвердить подписание</button></>}{detail.status === 'SIGNED' && <><h2>Договор подписан</h2><p>Подтвердите получение средств.</p><button className="primary full" disabled={busy} onClick={() => action('/disburse', undefined, key())}>Получить средства</button></>}{detail.status === 'DISBURSED' && <><h2>Кредит активен</h2><p>Остаток: {rub(detail.loan?.balance)}</p><p>Следующий платёж: {date(detail.loan?.next_payment_date)}</p></>}{detail.status === 'REJECTED' && <p>Сейчас финансирование по выбранным параметрам недоступно.</p>}{detail.status === 'CLOSED' && <p>Заявка закрыта.</p>}</> : <><h2>Проверка данных</h2>{detail.demo_profile && <p>Профиль проверки: {detail.demo_profile}</p>}{['SUBMITTED','CHECKING','NEEDS_INFO'].includes(detail.status) ? <><p>Выберите отрасль для оценки заявки.</p><select value={detail.demo_profile || profile} disabled={!!detail.demo_profile} onChange={e => setProfile(e.target.value)}>{profiles.map(p => <option key={p.key} value={p.key}>{p.sector}</option>)}<option value="MISSING_INFO">Нет сведений об оборотах</option><option value="MOCK_FAILURE">Источник недоступен</option><option value="PRIORITY_CONFLICT">Приоритетная отрасль с просрочкой</option></select><button className="primary full" disabled={busy || detail.status === 'NEEDS_INFO'} onClick={() => action('/checks', { demo_profile: detail.demo_profile || profile })}>Запустить проверку</button></> : <p>Решение сохранено в карточке.</p>}</>}</aside></div>}
-  </>
-}
-
-function Cashflow({ data, dashboard, onFinance }) {
-  if (!data || !dashboard) return <Loading/>
-  const max = Math.max(...data.months.map(m => Math.max(Number(m.income), Number(m.expenses))),1)
-  const forecast = dashboard.forecast
-  return <><div className="page-heading"><div><div className="eyebrow">ФИНАНСОВАЯ КАРТИНА</div><h1>Доходы и расходы</h1><p>Динамика денежных потоков и ближайшие плановые события.</p></div><button className="secondary" onClick={onFinance}>Подобрать финансирование ↗</button></div><div className="money-stats"><div className="money-stat tone-mint"><small>Поступления за 6 месяцев</small><strong>{rub(data.total_income)}</strong><span>↗ Денежный поток бизнеса</span></div><div className="money-stat tone-peach"><small>Расходы за 6 месяцев</small><strong>{rub(data.total_expenses)}</strong><span>Поставщики, команда и операции</span></div><div className="money-stat tone-violet"><small>Чистый поток</small><strong>{rub(data.net)}</strong><span>После плановых расходов</span></div></div><div className="cashflow-grid"><section className="panel cash-chart"><div className="section-head"><span>ПО МЕСЯЦАМ</span><h2>Динамика поступлений и расходов</h2></div><div className="chart-legend"><span><i className="legend-income"/> Доходы</span><span><i className="legend-expense"/> Расходы</span></div><div className="bar-chart">{data.months.map(m => <div className="bar-group" key={m.month}><div className="bar-pair"><div className="bar income" style={{height: Math.max(6,Number(m.income)/max*100)+'%'}} title={'Доходы: '+rub(m.income)}/><div className="bar expense" style={{height: Math.max(6,Number(m.expenses)/max*100)+'%'}} title={'Расходы: '+rub(m.expenses)}/></div><span>{new Date(m.month+'-01').toLocaleDateString('ru-RU',{month:'short'})}</span></div>)}</div></section><section className="panel expense-panel"><div className="section-head"><span>СТРУКТУРА</span><h2>Куда уходят средства</h2></div>{data.expense_categories.map((c,i) => <div className="expense-line" key={c.name}><div><span>{c.name}</span><strong>{c.share}%</strong></div><div className="expense-track"><i style={{width:c.share+'%',background:['#08aa74','#ef553b','#5a35ed','#5698f4'][i]}}/></div></div>)}</section></div><div className="cashflow-grid lower"><section className="panel"><div className="section-head"><span>БЛИЖАЙШИЕ 30 ДНЕЙ</span><h2>Плановые события</h2></div>{forecast.events.length ? forecast.events.map((e,i) => <div className="event-row" key={i}><span>{date(e.event_date)}</span><strong>{e.source}</strong><b className={Number(e.amount)<0?'negative':''}>{rub(e.amount)}</b></div>) : <p>Плановых событий пока нет.</p>}</section><section className="panel forecast-panel"><div className="section-head"><span>ПРОГНОЗ ОСТАТКА</span><h2>{Number(forecast.gap_amount)>0?'Возможен кассовый разрыв':'Денежный план стабилен'}</h2></div><strong className={Number(forecast.minimum_balance)<0?'negative':''}>{rub(forecast.minimum_balance)}</strong><p>Минимальный плановый остаток в ближайшие 30 дней{forecast.minimum_date?' · '+date(forecast.minimum_date):''}.</p>{Number(forecast.gap_amount)>0 && <button className="primary" onClick={onFinance}>Рассчитать решение →</button>}</section></div><p className="data-note">{forecast.assumptions} История доходов и расходов сформирована из синтетического профиля компании.</p></>
-}
-
-function Loading() { return <div className="panel empty"><div className="spinner"/>Загружаем данные…</div> }

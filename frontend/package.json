@@ -3,7 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": {"dev": "vite --host 127.0.0.1", "build": "vite build"},
-  "dependencies": {"react": "18.3.1", "react-dom": "18.3.1"},
-  "devDependencies": {"vite": "5.4.21"}
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "format": "prettier --write src index.html vite.config.js",
+    "format:check": "prettier --check src index.html vite.config.js"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2",
+    "vite": "5.4.21"
+  }
 }

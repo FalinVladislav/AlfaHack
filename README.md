@@ -64,6 +64,12 @@ py scripts/smoke.py http://localhost:8080
 
 ## Устройство проекта
 
+Frontend повторяет макет кредитного кабинета: финансовые карточки, аналитика, описание цели, расчёт условий и рассмотрение заявки. Карточка «Кредитная нагрузка» открывает действующие кредиты, даты списаний, суммы платежей и сроки окончания. Маскоты находятся в `frontend/public/mascots/`: `manager.webm` — экран входа, `consultant.webm` — цель кредита, `guide.webm` — расчёт и главная.
+
+Для наполнения добавлены [синтетические финансовые таблицы](backend/docs/synthetic-finance.md). Они создаются при старте, повторный запуск не дублирует операции и обязательства. В локальном режиме перезапустите backend после обновления; в Docker выполните `docker compose up --build -d`.
+
+Форматирование frontend: `npm --prefix frontend run format`; проверка оформления: `npm --prefix frontend run format:check`.
+
 - `backend/src/main/java/org/alfahack/core` — общие доменные модели, ошибки, контракты транзакций и сериализации, инфраструктурные адаптеры и сборка зависимостей.
 - `backend/src/main/java/org/alfahack/features` — фичи: интерфейсы (`port`), сценарии приложения (`application`), входные HTTP-адаптеры (`adapter/in/web`) и выходные адаптеры БД, ресурсов и API (`adapter/out`).
 - `backend/src/main/resources/schema.sql` — прежняя схема БД; `SeedData` загружает демонстрационные данные один раз.
