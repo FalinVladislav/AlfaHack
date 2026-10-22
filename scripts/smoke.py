@@ -71,8 +71,13 @@ def draft_and_submit(client, amount="3000000", purpose="EXPANSION", months=36, d
 
 
 stable = Client()
+assert stable.call("GET", "/me", expected=401)["code"] == "UNAUTHORIZED"
 assert stable.call("POST", "/auth/sessions", {"login": "stable", "password": "wrong"}, expected=401)["code"] == "INVALID_CREDENTIALS"
 assert "Кофейня" in stable.login("stable")["label"]
+saved_csrf = stable.csrf
+stable.csrf = "invalid-csrf"
+assert stable.call("POST", "/drafts", expected=403)["code"] == "CSRF"
+stable.csrf = saved_csrf
 assert len(stable.call("GET", "/insights")["cards"]) == 4
 assert len(stable.call("GET", "/cashflow/summary")["months"]) == 6
 gap = Client()
@@ -93,9 +98,11 @@ request_id = app["requests"][0]["id"]
 unverified = stable.call("POST", "/applications/" + app["id"] + "/documents", multipart={"request_id": request_id, "file": b"company_id,monthly_debt\nSTABLE,0\n"}, expected=422)
 assert unverified["code"] == "SYNTHETIC_ONLY"
 assert stable.call("POST", "/applications/" + app["id"] + "/requests/" + request_id + "/complete", expected=409)["code"] == "DOCUMENT_NOT_VERIFIED"
-file_bytes = (pathlib.Path(__file__).parent.parent / "src/main/resources/seed-documents/stable_statement.csv").read_bytes()
+file_bytes = (pathlib.Path(__file__).parent.parent / "backend/src/main/resources/seed-documents/stable_statement.csv").read_bytes()
 uploaded = stable.call("POST", "/applications/" + app["id"] + "/documents", multipart={"request_id": request_id, "file": file_bytes})
 assert uploaded["status"] == "VERIFIED", uploaded
+with stable.opener.open(BASE + "/api/v1/applications/" + app["id"] + "/documents/" + uploaded["id"]) as downloaded:
+    assert downloaded.read() == file_bytes
 approved = stable.call("POST", "/applications/" + app["id"] + "/requests/" + request_id + "/complete")
 assert approved["status"] == "APPROVED"
 assert staff.call("GET", "/staff/applications/" + app["id"])["score"] >= 75

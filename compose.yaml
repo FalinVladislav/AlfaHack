@@ -13,21 +13,20 @@ services:
       timeout: 3s
       retries: 20
   api:
-    build: .
+    build: ./backend
     environment:
       DB_URL: jdbc:postgresql://db:5432/credit
       DB_USER: credit
       DB_PASSWORD: ${DB_PASSWORD:-local_demo_password}
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
-      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}
+      MODEL_API_URL: ${MODEL_API_URL:-}
+      MODEL_API_TIMEOUT_SECONDS: ${MODEL_API_TIMEOUT_SECONDS:-30}
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
   web:
-    build: ./web
+    build: ./frontend
     ports:
       - "127.0.0.1:${WEB_PORT:-8088}:80"
     depends_on:
