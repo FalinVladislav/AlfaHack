@@ -1,8 +1,12 @@
 target/
 data/*
 !data/.gitkeep
-web/node_modules/
-web/dist/
+frontend/node_modules/
+frontend/dist/
+backend/data/*
+!backend/data/.gitkeep
+__pycache__/
+inference/.env
 .env
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
@@ -45,3 +49,4 @@ build/
 
 .idea/
 .codex/
+.maven-repository/

@@ -1,0 +1,25 @@
+server:
+  port: ${PORT:8080}
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:../data/credit;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  sql:
+    init:
+      mode: always
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+app:
+  demo-today: ${DEMO_TODAY:2026-10-21}
+  secure-cookie: ${SECURE_COOKIE:false}
+  model-api:
+    url: ${MODEL_API_URL:}
+    timeout-seconds: ${MODEL_API_TIMEOUT_SECONDS:30}
