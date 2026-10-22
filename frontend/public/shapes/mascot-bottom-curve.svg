@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+  <!-- Keep the entire upper silhouette; trim only the bottom along a shallow arc. -->
+  <path d="M0 0H1000V850Q500 1110 0 850Z" fill="white" />
+</svg>

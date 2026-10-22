@@ -512,7 +512,6 @@ svg {
   display: flex;
   align-items: flex-start;
   padding-top: 45px;
-  background: #d8e99a;
 }
 .finance-card h2 {
   max-width: 65%;
@@ -521,24 +520,35 @@ svg {
 .mascot {
   position: relative;
   pointer-events: none;
-  overflow: hidden;
-  background: var(--mascot-background);
+  overflow: visible;
+  background: transparent;
+  isolation: isolate;
+}
+.mascot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--mascot-shape) center / 100% 100% no-repeat;
+  z-index: 0;
 }
 .mascot-guide {
-  --mascot-background: #dfc1fa;
+  --mascot-shape: url('/shapes/mascot-blob.svg');
 }
 .mascot-consultant {
-  --mascot-background: #d8e99a;
+  --mascot-shape: url('/shapes/mascot-consultant-blob.svg');
 }
 .mascot-manager {
-  --mascot-background: #b4c9f7;
+  --mascot-shape: url('/shapes/mascot-manager-blob.svg');
 }
 .mascot video,
 .mascot-poster {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center bottom;
+  /* Match the reference's curved leg cutoff without clipping the head or hands. */
+  mask: url('/shapes/mascot-bottom-curve.svg') center / 100% 100% no-repeat;
   position: relative;
   z-index: 1;
 }
@@ -726,7 +736,6 @@ svg {
   right: 0;
   top: 30px;
   bottom: 0;
-  border-radius: 28px;
 }
 .purpose-field {
   border: 0;
@@ -2094,17 +2103,9 @@ details summary {
   position: absolute;
   top: 24px;
   left: 28px;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: #ef3124;
-  color: #fff;
-  font-size: 27px;
-  font-weight: 700;
-  text-align: center;
-  line-height: 37px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  width: 48px;
+  height: 48px;
+  display: block;
   z-index: 3;
 }
 .login-form-wrap {
@@ -2179,7 +2180,7 @@ details summary {
 .login-visual {
   margin: 0;
   border-radius: 0;
-  background: #b4c9f7;
+  background: #fff;
 }
 .login-mascot {
   inset: 50% auto auto 50%;
