@@ -107,7 +107,10 @@ export const purposes = {
 export const statuses = {
   SUBMITTED: 'На рассмотрении',
   CHECKING: 'Проверка данных',
+  SCORING_ERROR: 'Ошибка оценки',
   NEEDS_INFO: 'Нужны сведения',
+  AWAITING_DECISION: 'Ожидает решения',
+  IN_REVIEW: 'В работе сотрудника',
   APPROVED: 'Одобрена',
   COUNTEROFFER: 'Новые условия',
   REJECTED: 'Отказ',
@@ -115,6 +118,8 @@ export const statuses = {
   SIGNED: 'Договор подписан',
   DISBURSED: 'Кредит активен',
   CLOSED: 'Закрыта',
+  WITHDRAWN: 'Отозвана клиентом',
+  EXPIRED: 'Предложение истекло',
 }
 export const reasons = {
   POLICY_PASSED: 'Показатели соответствуют условиям',
@@ -135,10 +140,13 @@ export const productName = (id) =>
         ? 'Оборотный кредит'
         : id
 export const money = (value) =>
-  new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(value || 0)) + ' ₽'
+  value == null
+    ? 'Нет сведений'
+    : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(value)) + ' ₽'
 export const percent = (value) =>
-  new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(Number(value || 0) * 100) +
-  '%'
+  value == null
+    ? 'Нет сведений'
+    : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(Number(value) * 100) + '%'
 export const monthName = (value) =>
   new Date(value + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long' })
 export const sum = (items, field) =>

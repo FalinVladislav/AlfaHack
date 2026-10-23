@@ -51,7 +51,8 @@ public class JdbcForecastRepository implements ForecastRepository {
     public Map<String, Object> draft(
         String draftId
     ) {
-        return row(db.queryForMap("SELECT purpose,needed_by,version FROM drafts WHERE id=?", draftId));
+        return row(
+            db.queryForMap("SELECT purpose,goal_id,goal_text,needed_by,version FROM drafts WHERE id=?", draftId));
     }
 
     @Override

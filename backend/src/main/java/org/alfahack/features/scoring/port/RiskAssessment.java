@@ -11,4 +11,10 @@ public interface RiskAssessment {
         BigDecimal amount,
         BigDecimal newPayment
     );
+
+    Map<String, Object> assess(
+        Profile profile,
+        BigDecimal amount,
+        BigDecimal newPayment
+    );
 }

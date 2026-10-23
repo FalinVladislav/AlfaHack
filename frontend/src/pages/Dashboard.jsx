@@ -36,7 +36,7 @@ export default function Dashboard({
   const opportunity = cards[slide % Math.max(cards.length, 1)]
   const changeSlide = (delta) => setSlide((value) => (value + delta + cards.length) % cards.length)
   const pending = applications.filter(
-    (item) => !['DISBURSED', 'CLOSED', 'REJECTED'].includes(item.status),
+    (item) => !['DISBURSED', 'CLOSED', 'REJECTED', 'WITHDRAWN', 'EXPIRED'].includes(item.status),
   )
 
   return (

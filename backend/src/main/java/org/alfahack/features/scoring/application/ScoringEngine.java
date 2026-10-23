@@ -29,13 +29,45 @@ public class ScoringEngine implements org.alfahack.features.scoring.port.RiskAss
     ) {
         Profile p = profiles.get(key);
         Map<String, Object> mocks = sources.fetch(key);
+        return calculate(p, mocks, amount, newPayment);
+    }
+
+    /**
+     * Assess persisted company facts; no employee-selected scenario is involved.
+     */
+    public Map<String, Object> assess(
+        Profile p,
+        BigDecimal amount,
+        BigDecimal newPayment
+    ) {
+        if ("SOURCE_UNAVAILABLE".equals(p.creditHistory()))
+            return Map.of("outcome", "SOURCE_ERROR", "code", "SOURCE_UNAVAILABLE", "explanation",
+                "Сведения временно недоступны. Повторите оценку после восстановления источника.");
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("status", "OK");
+        facts.put("turnover", Map.of("status", "OK", "monthly_revenue", p.monthlyRevenue(),
+            "previous_revenue", p.previousRevenue(), "monthly_profit", p.monthlyProfit()));
+        facts.put("credit_history", Map.of("status", "OK", "history", p.creditHistory(),
+            "overdue_days", p.overdueDays(), "monthly_debt", p.monthlyDebt()));
+        facts.put("collateral", Map.of("status", "OK", "estimated_value", p.collateralValue()));
+        facts.put("source", "INTERNAL_RECORDS");
+        return calculate(p, facts, amount, newPayment);
+    }
+
+    private Map<String, Object> calculate(
+        Profile p,
+        Map<String, Object> mocks,
+        BigDecimal amount,
+        BigDecimal newPayment
+    ) {
         if ("ERROR".equals(mocks.get("status")))
             return Map.of("outcome", "SOURCE_ERROR", "code", "SOURCE_UNAVAILABLE", "explanation",
                 "Источник временно недоступен. Решение отложено; повторите проверку.", "sources", mocks);
         if ("ERROR".equals(((Map<?, ?>) mocks.get("turnover")).get("status")))
             return Map.of("outcome", "INSUFFICIENT_DATA", "code", "INCOME_UNKNOWN", "explanation",
                 "Не хватает сведений об оборотах. Нужна финансовая выписка.", "sources", mocks);
-        if (p.monthlyRevenue().signum() <= 0 || p.currentLiabilities().signum() <= 0)
+        if (p.monthlyRevenue().signum() <= 0 || p.previousRevenue().signum() <= 0
+            || p.currentLiabilities().signum() <= 0)
             return Map.of("outcome", "INSUFFICIENT_DATA", "code", "METRIC_INPUT_MISSING", "explanation",
                 "Недостаточно данных для расчёта ключевых метрик.", "sources", mocks);
         double revenue = p.monthlyRevenue().doubleValue(), profit = p.monthlyProfit().doubleValue();
@@ -53,7 +85,8 @@ public class ScoringEngine implements org.alfahack.features.scoring.port.RiskAss
         int growthPoints = growth >= .10 ? 15 : growth >= 0 ? 9 : 0;
         int score = dtiPoints + ltvPoints + liquidityPoints + marginPoints + growthPoints;
         boolean priority = p.key().equals("MANUFACTURING") || p.key().equals("IT") || p.key().equals("AGRICULTURE")
-            || p.key().equals("PRIORITY_CONFLICT");
+            || p.key().equals("PRIORITY_CONFLICT") || p.sector().equals("Производство")
+            || p.sector().equals("IT-услуги") || p.sector().equals("Сельское хозяйство");
         boolean subsidy = priority && p.sme() && p.businessMonths() > 12;
         int adjusted = Math.min(100, score + (subsidy ? 5 : 0));
         String outcome, code, explanation;

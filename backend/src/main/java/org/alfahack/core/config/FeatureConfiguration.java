@@ -44,6 +44,39 @@ import org.springframework.context.annotation.Configuration;
 public class FeatureConfiguration {
 
     @Bean
+    org.alfahack.features.scenarios.port.ScenarioModel scenarioModel(
+        @Value("${app.model-api.url}") String url,
+        @Value("${app.model-api.timeout-seconds}") int timeout,
+        JsonCodec json
+    ) {
+        return new org.alfahack.features.scenarios.adapter.out.http.HttpScenarioModel(url, timeout, json);
+    }
+
+    @Bean
+    org.alfahack.features.scenarios.port.ScenarioDialogUseCases scenarioDialogs(
+        org.alfahack.features.scenarios.port.ScenarioDialogRepository repository,
+        UnitOfWork transactions,
+        DraftUseCases drafts,
+        org.alfahack.features.finance.port.FinanceUseCases finance,
+        org.alfahack.features.forecast.port.CreditScenarioUseCases scenarios,
+        org.alfahack.features.scenarios.port.ScenarioModel model,
+        JsonCodec json
+    ) {
+        return new org.alfahack.features.scenarios.application.ScenarioDialogs(repository, transactions, drafts,
+            finance, scenarios, model, json);
+    }
+
+    @Bean
+    org.alfahack.features.forecast.port.CreditScenarioUseCases creditScenarios(
+        org.alfahack.features.finance.port.FinanceUseCases finance,
+        ForecastRepository repository,
+        ProductCatalog products,
+        @Value("${app.demo-today}") String today
+    ) {
+        return new org.alfahack.features.forecast.application.CreditScenarios(finance, repository, products, today);
+    }
+
+    @Bean
     org.alfahack.features.goals.port.GoalUseCases goals(
         ProductCatalog products,
         LanguageModel model

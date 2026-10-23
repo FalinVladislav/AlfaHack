@@ -3,6 +3,7 @@ import { Button, Checkbox, Input, InputNumber, Slider } from 'antd'
 import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
 import GoalPicker from '../components/GoalPicker'
+import CreditScenarios from '../components/CreditScenarios'
 import { Empty, Icon, Loading, Progress, money, percent, purposes } from '../components/Ui'
 import { termTable, nearestTerm, normalizeFinancing, validFinancing } from '../financingLimits'
 
@@ -69,7 +70,6 @@ export default function FinancingWizard({
   const [calculating, setCalculating] = useState(false)
   const [quoteError, setQuoteError] = useState('')
   const [consent, setConsent] = useState(false)
-  const [analysis, setAnalysis] = useState(null)
   const [limitState, setLimitState] = useState(null)
   const [limitsError, setLimitsError] = useState('')
   const sequence = useRef(0)
@@ -204,7 +204,6 @@ export default function FinancingWizard({
   useEffect(() => {
     const current = ++sequence.current
     setQuotes(null)
-    setAnalysis(null)
     requestKey.current = null
     if (step !== 2 || !draftId || loading || draft?.id !== draftId || draft.status !== 'ACTIVE')
       return
@@ -457,40 +456,13 @@ export default function FinancingWizard({
                 </strong>
               </div>
             </div>
-            {chosen && (
-              <>
-                <Button
-                  type="link"
-                  disabled={busy || calculating}
-                  onClick={() =>
-                    run(async () =>
-                      setAnalysis(
-                        await post(`/quotes/${selected}/analysis`, {
-                          horizon: '30D',
-                          scenario: 'BASE',
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  Как кредит повлияет на остаток?
-                  <Icon name="arrow" size={17} />
-                </Button>
-                {analysis && (
-                  <div className="analysis-result">
-                    <div>
-                      <span>Без кредита, конец периода</span>
-                      <strong>{money(analysis.without_credit.at(-1)?.balance)}</strong>
-                    </div>
-                    <div>
-                      <span>С кредитом, конец периода</span>
-                      <strong>{money(analysis.with_credit.at(-1)?.balance)}</strong>
-                    </div>
-                    <p>{analysis.assumptions}</p>
-                  </div>
-                )}
-              </>
-            )}
+            <CreditScenarios
+              key={`${draftId}:${draft?.goal_id}:${form.purpose}`}
+              draftId={draftId}
+              quoteId={chosen?.quote_id}
+              pending={calculating}
+              purpose={form.purpose}
+            />
             <label className="consent">
               <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)} />
               Подтверждаю сведения и согласен с условиями расчёта

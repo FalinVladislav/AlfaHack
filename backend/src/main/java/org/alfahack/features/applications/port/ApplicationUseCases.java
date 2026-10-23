@@ -32,6 +32,42 @@ public interface ApplicationUseCases {
         String profile
     );
 
+    Map<String, Object> claim(
+        User user,
+        String id,
+        int expectedVersion
+    );
+
+    Map<String, Object> preview(
+        User user,
+        String id,
+        Map<String, Object> body
+    );
+
+    Map<String, Object> decide(
+        User user,
+        String id,
+        Map<String, Object> body
+    );
+
+    Map<String, Object> withdraw(
+        User user,
+        String id,
+        int expectedVersion
+    );
+
+    Map<String, Object> copyToDraft(
+        User user,
+        String id
+    );
+
+    List<Map<String, Object>> notifications(User user);
+
+    List<Map<String, Object>> readNotification(
+        User user,
+        String id
+    );
+
     Map<String, Object> accept(
         User user,
         String id,

@@ -28,6 +28,7 @@ export default function App() {
   const [finance, setFinance] = useState(null)
   const [insights, setInsights] = useState(null)
   const [notifications, setNotifications] = useState([])
+  const [applicationNotifications, setApplicationNotifications] = useState([])
   const [insightsError, setInsightsError] = useState('')
   const [dashboard, setDashboard] = useState(null)
   const [applications, setApplications] = useState([])
@@ -85,9 +86,10 @@ export default function App() {
       const results = await Promise.allSettled([
         api('/hypotheses', { signal: controller.signal }),
         api('/notifications', { signal: controller.signal }),
+        api('/application-notifications', { signal: controller.signal }),
       ])
       if (!active) return
-      const [hypotheses, messages] = results
+      const [hypotheses, messages, applicationMessages] = results
       if (hypotheses.status === 'fulfilled') {
         setInsights(hypotheses.value)
         setInsightsError('')
@@ -96,6 +98,8 @@ export default function App() {
         setInsightsError('Не удалось обновить гипотезы. Повторим автоматически.')
       }
       if (messages.status === 'fulfilled') setNotifications(messages.value)
+      if (applicationMessages.status === 'fulfilled')
+        setApplicationNotifications(applicationMessages.value)
       timer = setTimeout(poll, delay)
     }
     poll()
@@ -152,6 +156,7 @@ export default function App() {
       setDashboard(null)
       setInsights(null)
       setNotifications([])
+      setApplicationNotifications([])
       setInsightsError('')
       setApplications([])
       setMe(user)
@@ -167,6 +172,7 @@ export default function App() {
       setFinance(null)
       setInsights(null)
       setNotifications([])
+      setApplicationNotifications([])
       setInitialNeed(null)
       navigate('home')
     })
@@ -221,6 +227,7 @@ export default function App() {
         finance={finance}
         busy={busy}
         notifications={notifications}
+        applicationNotifications={applicationNotifications}
         onHypothesis={openHypothesis}
       />
       <main className="workspace" id="main-content">
@@ -291,6 +298,7 @@ export default function App() {
             run={run}
             busy={busy}
             onError={setError}
+            onReadNotifications={setApplicationNotifications}
           />
         )}
       </main>
@@ -307,6 +315,7 @@ function Header({
   finance,
   busy,
   notifications,
+  applicationNotifications,
   onHypothesis,
 }) {
   const [popover, setPopover] = useState('')
@@ -316,7 +325,9 @@ function Header({
       application.status,
     ),
   )
-  const unread = notifications.filter((item) => !item.read).length
+  const unread =
+    notifications.filter((item) => !item.read).length +
+    applicationNotifications.filter((item) => !item.read_at).length
   useEffect(() => {
     const close = (event) => {
       if (!ref.current?.contains(event.target)) setPopover('')
@@ -353,7 +364,7 @@ function Header({
         <Button
           type="text"
           className="bell"
-          aria-label={`Уведомления${unread ? `, новых гипотез: ${unread}` : ''}`}
+          aria-label={`Уведомления${unread ? `, непрочитанных: ${unread}` : ''}`}
           aria-controls="notifications-panel"
           aria-expanded={popover === 'notifications'}
           onClick={() => setPopover((value) => (value === 'notifications' ? '' : 'notifications'))}
@@ -416,6 +427,18 @@ function Header({
           aria-label="Уведомления"
         >
           <h3>Уведомления</h3>
+          {applicationNotifications.map((item) => (
+            <button
+              key={item.id}
+              className={item.read_at ? '' : 'notification-unread'}
+              onClick={() => go('applications/' + item.application_id)}
+            >
+              <small>
+                {item.read_at ? 'Заявка' : 'Новое решение'} · {date(item.created_at)}
+              </small>
+              <span>{item.message}</span>
+            </button>
+          ))}
           {notifications.map((item) => (
             <Button
               type="text"
@@ -448,7 +471,8 @@ function Header({
                   </small>
                 </Button>
               ))
-            : !notifications.length && <p>Новых уведомлений пока нет.</p>}
+            : !notifications.length &&
+              !applicationNotifications.length && <p>Новых уведомлений пока нет.</p>}
           {finance?.loans[0] && (
             <p>Ближайшее списание по кредиту — {date(finance.loans[0].next_payment_date)}.</p>
           )}

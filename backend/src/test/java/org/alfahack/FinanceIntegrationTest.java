@@ -49,12 +49,22 @@ class FinanceIntegrationTest {
         var application = applications.submit(stable, Map.of("draft_id", draftId, "quote_id", quote.get("quote_id"),
             "expected_version", draft.get("version"), "consents", true), "finance-submit");
         String applicationId = (String) application.get("id");
-        var approved = applications.check(new User("staff", "STAFF", null, "test"), applicationId, "RETAIL");
+        assertEquals("AWAITING_DECISION", application.get("status"));
+        User staff = new User("staff", "STAFF", null, "test");
+        var claimed = applications.claim(staff, applicationId, ((Number) application.get("version")).intValue());
+        var preview = applications.preview(staff, applicationId, Map.of());
+        var approved = applications.decide(staff, applicationId, Map.of(
+            "expected_version", claimed.get("version"), "decision_type", "APPROVE",
+            "calculation_token", preview.get("calculation_token"), "internal_reason",
+            "Проверены финансовые показатели и нагрузка", "client_message",
+            "Банк одобрил финансирование на указанных условиях", "expires_at",
+            java.time.LocalDateTime.now().plusDays(7).toString()));
         assertEquals("APPROVED", approved.get("status"));
-        applications.accept(stable, applicationId, Map.of("offer_version", approved.get("offer_version")),
+        var offer = (Map<?, ?>) approved.get("offer");
+        applications.accept(stable, applicationId, Map.of("offer_id", offer.get("id"),
+            "offer_version", offer.get("version")),
             "finance-accept");
         applications.sign(stable, applicationId, Map.of("confirmation", true), "finance-sign");
-        applications.disburse(stable, applicationId, "finance-disburse");
         var loans = finance.loans(stable);
         assertEquals(3, loans.size());
         var issued = loans.stream().filter(loan -> "ISSUED".equals(loan.get("source"))).findFirst().orElseThrow();

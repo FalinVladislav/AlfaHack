@@ -34,6 +34,9 @@ docker compose up --build -d
 | `GET /health` | Состояние процесса и наличие конфигурации; не проверяет модель платным запросом |
 | `POST /v1/chat` | Совместимость с существующим `HttpLanguageModel`: instructions + message → intent + answer + proposed_fields |
 | `POST /v1/assist` | Все новые сценарии, бизнес-контекст, история, гипотезы, вопросы, продукты и кнопки |
+| `POST /v1/tools` | Один нативный шаг Chat Completions с tools; исполнение и история остаются у бэкенда |
+
+`/v1/tools` принимает `{messages, tools}` и возвращает `{message, finish_reason, model}`. Разрешены только `get_business_context`, `get_missing_inputs`, `simulate_scenarios`. Ответ `message` содержит обычный текст либо `tool_calls`. Бэкенд проверяет аргументы, выполняет функции, сохраняет результаты и отправляет следующий шаг с сообщениями `role=tool` и соответствующим `tool_call_id`. Внешние tools и произвольный код не выполняются. Подробности: [business-scenario-dialog.md](../backend/docs/business-scenario-dialog.md).
 
 `Content-Type: application/json`. Тело не более 128000 байт. Сообщение — до 16000 символов. Потоковая выдача и автоматические повторы не используются. Не более восьми одновременных запросов к провайдеру на процесс; далее 503 `SERVICE_BUSY`.
 

@@ -43,6 +43,8 @@ public class SeedData implements CommandLineRunner {
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "stable", "CLIENT", "STABLE", "Кофейня Вторая чашка");
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "gap", "CLIENT", "GAP", "Мастерская Горизонт");
         db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "staff", "STAFF", null, "Кредитный специалист");
+        db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "staff2", "STAFF", null,
+            "Старший кредитный специалист");
         event("GAP", today.plusDays(20), "100000.00", "EXPECTED", "Оплата клиента");
         event("GAP", today.plusDays(25), "-700000.00", "SCHEDULED", "Оплата поставщику");
         event("GAP", today.plusDays(28), "200000.00", "EXPECTED", "Оплата клиента");
@@ -55,9 +57,13 @@ public class SeedData implements CommandLineRunner {
         db.update("UPDATE demo_accounts SET label='Кофейня Вторая чашка' WHERE account_key='stable'");
         db.update("UPDATE demo_accounts SET label='Мастерская Горизонт' WHERE account_key='gap'");
         db.update("UPDATE demo_accounts SET label='Кредитный специалист' WHERE account_key='staff'");
+        if (db.queryForObject("SELECT COUNT(*) FROM demo_accounts WHERE account_key='staff2'", Integer.class) == 0)
+            db.update("INSERT INTO demo_accounts VALUES (?,?,?,?)", "staff2", "STAFF", null,
+                "Старший кредитный специалист");
         auth.ensureCredential("stable", "Alfa2026!");
         auth.ensureCredential("gap", "Alfa2026!");
         auth.ensureCredential("staff", "Alfa2026!");
+        auth.ensureCredential("staff2", "Alfa2026!");
     }
 
     private void event(

@@ -1,6 +1,10 @@
 server:
   port: ${PORT:8080}
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
   datasource:
     url: ${DB_URL:jdbc:h2:file:../data/credit;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
     username: ${DB_USER:sa}
@@ -27,3 +31,6 @@ app:
   insights:
     worker-enabled: ${INSIGHTS_WORKER_ENABLED:true}
     poll-millis: 2000
+  scenarios:
+    worker-enabled: ${SCENARIOS_WORKER_ENABLED:true}
+    poll-millis: 1000
