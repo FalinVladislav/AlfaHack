@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Button, Checkbox, Input, InputNumber, Slider } from 'antd'
 import { api, patch, post } from '../api'
 import Mascot from '../components/Mascot'
 import GoalPicker from '../components/GoalPicker'
@@ -6,35 +7,31 @@ import { Empty, Icon, Loading, Progress, money, percent, purposes } from '../com
 import { termTable, nearestTerm, normalizeFinancing, validFinancing } from '../financingLimits'
 
 function RangeField({ id, label, value, onChange, onBlur, min, max, step = 1, unit, disabled }) {
-  const fill = Math.max(0, Math.min(100, ((Number(value) - min) / Math.max(max - min, 1)) * 100))
   return (
     <div className="slider-card">
       <label htmlFor={id}>{label}</label>
       <div className="slider-value">
-        <input
+        <InputNumber
           id={id}
-          type="number"
           min={min}
           max={max}
           step={step}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
           onBlur={onBlur}
           disabled={disabled}
           aria-label={label}
         />
         <span>{unit}</span>
       </div>
-      <input
+      <Slider
         className="range-input"
         aria-label={`${label}, ползунок`}
-        type="range"
         min={min}
         max={max}
         step={step}
         value={Math.min(max, Math.max(min, Number(value) || min))}
-        style={{ '--fill': `${fill}%` }}
-        onChange={(event) => onChange(event.target.value, true)}
+        onChange={(nextValue) => onChange(nextValue, true)}
         disabled={disabled || min === max}
       />
       <div className="range-labels">
@@ -339,10 +336,10 @@ export default function FinancingWizard({
       <Empty
         title="Заявка уже отправлена"
         action={
-          <button className="primary" onClick={() => onNavigate('applications')}>
+          <Button type="primary" size="large" onClick={() => onNavigate('applications')}>
             К моим заявкам
             <Icon name="arrow" />
-          </button>
+          </Button>
         }
       >
         Вы можете следить за решением в разделе заявок.
@@ -410,7 +407,7 @@ export default function FinancingWizard({
             <div className="calculation-meta">
               <label htmlFor="needed-by">
                 Дата получения
-                <input
+                <Input
                   id="needed-by"
                   type="date"
                   min={tomorrow.toISOString().slice(0, 10)}
@@ -462,8 +459,8 @@ export default function FinancingWizard({
             </div>
             {chosen && (
               <>
-                <button
-                  className="text-button"
+                <Button
+                  type="link"
                   disabled={busy || calculating}
                   onClick={() =>
                     run(async () =>
@@ -478,7 +475,7 @@ export default function FinancingWizard({
                 >
                   Как кредит повлияет на остаток?
                   <Icon name="arrow" size={17} />
-                </button>
+                </Button>
                 {analysis && (
                   <div className="analysis-result">
                     <div>
@@ -495,21 +492,19 @@ export default function FinancingWizard({
               </>
             )}
             <label className="consent">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(event) => setConsent(event.target.checked)}
-              />
+              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)} />
               Подтверждаю сведения и согласен с условиями расчёта
             </label>
-            <button
-              className="primary submit-application"
+            <Button
+              type="primary"
+              className="submit-application"
+              size="large"
               disabled={busy || calculating || !chosen || !consent || !!quoteError}
               onClick={submit}
             >
               {busy ? 'Отправляем…' : 'Отправить заявку'}
               <Icon name="arrow" />
-            </button>
+            </Button>
           </div>
           <Mascot kind="guide" className="stage-mascot" />
         </section>

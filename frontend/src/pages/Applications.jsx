@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Button, Select, Tag, Upload } from 'antd'
 import { api, post, date } from '../api'
 import {
   Empty,
@@ -122,10 +123,10 @@ export default function Applications({
             <h1>{client ? 'Заявки и кредиты' : 'Очередь заявок'}</h1>
           </div>
           {client && (
-            <button className="primary compact" onClick={() => onFinance()}>
+            <Button type="primary" size="large" onClick={() => onFinance()}>
               <Icon name="plus" size={19} />
               Новая заявка
-            </button>
+            </Button>
           )}
         </div>
         {!applications.length ? (
@@ -133,10 +134,10 @@ export default function Applications({
             title="Пока нет заявок"
             action={
               client && (
-                <button className="primary" onClick={() => onFinance()}>
+                <Button type="primary" size="large" onClick={() => onFinance()}>
                   Подобрать финансирование
                   <Icon name="arrow" />
-                </button>
+                </Button>
               )
             }
           >
@@ -145,7 +146,8 @@ export default function Applications({
         ) : (
           <section className="surface application-list">
             {applications.map((application) => (
-              <button
+              <Button
+                type="text"
                 className="application-list-row"
                 key={application.id}
                 onClick={() => onNavigate('applications/' + application.id)}
@@ -163,15 +165,15 @@ export default function Applications({
                 <strong className="application-list-amount">{money(application.amount)}</strong>
                 <Status value={application.status} />
                 <Icon name="chevron" size={18} />
-              </button>
+              </Button>
             ))}
           </section>
         )}
         {client && (
-          <button className="text-button list-to-loans" onClick={() => onNavigate('loans')}>
+          <Button type="link" className="list-to-loans" onClick={() => onNavigate('loans')}>
             Все действующие кредиты и ближайшие списания
             <Icon name="arrow" size={18} />
-          </button>
+          </Button>
         )}
       </section>
     )
@@ -318,34 +320,43 @@ export default function Applications({
                       <div key={request.id}>
                         <h2>Уточните сведения</h2>
                         <p>Нужна подготовленная финансовая выписка за {request.period}.</p>
-                        <span className="status-tag">
+                        <Tag color={request.status === 'VERIFIED' ? 'success' : 'warning'}>
                           {request.status === 'VERIFIED'
                             ? 'Сведения подтверждены'
                             : 'Ожидаем документ'}
-                        </span>
-                        <label className="file-field">
+                        </Tag>
+                        <div className="file-field">
                           CSV-выписка
-                          <input
-                            type="file"
+                          <Upload
                             accept=".csv"
-                            onChange={(event) => setFile(event.target.files?.[0])}
-                          />
-                        </label>
-                        <button
-                          className="secondary full"
+                            maxCount={1}
+                            beforeUpload={(nextFile) => {
+                              setFile(nextFile)
+                              return false
+                            }}
+                            onRemove={() => setFile(null)}
+                          >
+                            <Button>Выбрать CSV-файл</Button>
+                          </Upload>
+                        </div>
+                        <Button
+                          size="large"
+                          block
                           disabled={busy || !file}
                           onClick={() => upload(request)}
                         >
                           Загрузить документ
-                        </button>
+                        </Button>
                         {request.status === 'VERIFIED' && (
-                          <button
-                            className="primary full"
+                          <Button
+                            type="primary"
+                            size="large"
+                            block
                             disabled={busy}
                             onClick={() => action(`/requests/${request.id}/complete`)}
                           >
                             Продолжить проверку
-                          </button>
+                          </Button>
                         )}
                       </div>
                     ))}
@@ -353,36 +364,40 @@ export default function Applications({
                     <>
                       <h2>Предложение готово</h2>
                       <p>Проверьте сумму и ставку. После принятия условий подготовим договор.</p>
-                      <button
-                        className="primary full"
+                      <Button
+                        type="primary"
+                        size="large"
+                        block
                         disabled={busy}
                         onClick={() =>
                           action('/offer/accept', { offer_version: detail.offer_version }, true)
                         }
                       >
                         Принять условия
-                      </button>
-                      <button
-                        className="secondary full"
+                      </Button>
+                      <Button
+                        size="large"
+                        block
                         disabled={busy}
                         onClick={() => action('/offer/decline')}
                       >
                         Отклонить предложение
-                      </button>
+                      </Button>
                     </>
                   )}
                   {detail.status === 'OFFER_ACCEPTED' && (
                     <>
                       <h2>Договор готов</h2>
-                      <button
-                        className="secondary full"
+                      <Button
+                        size="large"
+                        block
                         disabled={busy}
                         onClick={() =>
                           run(async () => setContract(await api(`/applications/${id}/contract`)))
                         }
                       >
                         Посмотреть договор
-                      </button>
+                      </Button>
                       {contract && (
                         <div className="contract-preview">
                           <strong>№ {contract.number}</strong>
@@ -393,26 +408,30 @@ export default function Applications({
                           </p>
                         </div>
                       )}
-                      <button
-                        className="primary full"
+                      <Button
+                        type="primary"
+                        size="large"
+                        block
                         disabled={busy}
                         onClick={() => action('/contract/sign', { confirmation: true }, true)}
                       >
                         Подтвердить подписание
-                      </button>
+                      </Button>
                     </>
                   )}
                   {detail.status === 'SIGNED' && (
                     <>
                       <h2>Договор подписан</h2>
                       <p>Осталось подтвердить получение средств.</p>
-                      <button
-                        className="primary full"
+                      <Button
+                        type="primary"
+                        size="large"
+                        block
                         disabled={busy}
                         onClick={() => action('/disburse', undefined, true)}
                       >
                         Получить средства
-                      </button>
+                      </Button>
                     </>
                   )}
                   {detail.status === 'DISBURSED' && (
@@ -423,27 +442,27 @@ export default function Applications({
                         <br />
                         Следующий платёж: {date(detail.loan?.next_payment_date)}
                       </p>
-                      <button className="primary full" onClick={() => onNavigate('loans')}>
+                      <Button type="primary" size="large" block onClick={() => onNavigate('loans')}>
                         К графику списаний
                         <Icon name="arrow" size={18} />
-                      </button>
+                      </Button>
                     </>
                   )}
                   {detail.status === 'REJECTED' && (
                     <>
                       <h2>Сейчас кредит недоступен</h2>
                       <p>Основание решения указано в карточке заявки.</p>
-                      <button className="secondary full" onClick={() => onFinance()}>
+                      <Button size="large" block onClick={() => onFinance()}>
                         Рассмотреть другие параметры
-                      </button>
+                      </Button>
                     </>
                   )}
                   {detail.status === 'CLOSED' && (
                     <>
                       <h2>Заявка закрыта</h2>
-                      <button className="secondary full" onClick={() => onFinance()}>
+                      <Button size="large" block onClick={() => onFinance()}>
                         Создать новую заявку
-                      </button>
+                      </Button>
                     </>
                   )}
                 </>
@@ -455,32 +474,32 @@ export default function Applications({
                     <>
                       <label>
                         Синтетический профиль
-                        <select
+                        <Select
                           value={detail.demo_profile || profile}
                           disabled={!!detail.demo_profile}
-                          onChange={(event) => setProfile(event.target.value)}
-                        >
-                          {profiles.map((item) => (
-                            <option key={item.key} value={item.key}>
-                              {item.sector}
-                            </option>
-                          ))}
-                          <option value="MISSING_INFO">Недостаточно сведений</option>
-                          <option value="MOCK_FAILURE">Источник недоступен</option>
-                          <option value="PRIORITY_CONFLICT">
-                            Приоритетная отрасль с просрочкой
-                          </option>
-                        </select>
+                          onChange={setProfile}
+                          options={[
+                            ...profiles.map((item) => ({ value: item.key, label: item.sector })),
+                            { value: 'MISSING_INFO', label: 'Недостаточно сведений' },
+                            { value: 'MOCK_FAILURE', label: 'Источник недоступен' },
+                            {
+                              value: 'PRIORITY_CONFLICT',
+                              label: 'Приоритетная отрасль с просрочкой',
+                            },
+                          ]}
+                        />
                       </label>
-                      <button
-                        className="primary full"
+                      <Button
+                        type="primary"
+                        size="large"
+                        block
                         disabled={busy || detail.status === 'NEEDS_INFO'}
                         onClick={() =>
                           action('/checks', { demo_profile: detail.demo_profile || profile })
                         }
                       >
                         Запустить проверку
-                      </button>
+                      </Button>
                       {detail.status === 'NEEDS_INFO' && (
                         <p>Для продолжения клиент должен подтвердить запрошенные сведения.</p>
                       )}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Button, Segmented, Select } from 'antd'
 import { date } from '../api'
 import { Icon, Loading, money, monthName } from '../components/Ui'
 
@@ -108,18 +109,15 @@ export default function Analytics({ focus, finance, dashboard, onFinance, onNavi
         <div>
           <h1>{title}</h1>
         </div>
-        <div className="tabs" aria-label="Период графика">
-          {[3, 6].map((value) => (
-            <button
-              key={value}
-              className={period === value ? 'selected' : ''}
-              aria-pressed={period === value}
-              onClick={() => setPeriod(value)}
-            >
-              {value === 3 ? '3 месяца' : '6 месяцев'}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          aria-label="Период графика"
+          value={period}
+          onChange={setPeriod}
+          options={[
+            { label: '3 месяца', value: 3 },
+            { label: '6 месяцев', value: 6 },
+          ]}
+        />
       </div>
       <div className="analytics-stats">
         <div className="card blue">
@@ -191,14 +189,14 @@ export default function Analytics({ focus, finance, dashboard, onFinance, onNavi
             Минимальный плановый остаток
             {dashboard.forecast.minimum_date ? ` · ${date(dashboard.forecast.minimum_date)}` : ''}.
           </p>
-          <button className="text-button" onClick={onFinance}>
+          <Button type="link" onClick={onFinance}>
             Рассмотреть финансирование
             <Icon name="arrow" size={18} />
-          </button>
-          <button className="text-button" onClick={() => onNavigate('loans')}>
+          </Button>
+          <Button type="link" onClick={() => onNavigate('loans')}>
             Посмотреть кредитные платежи
             <Icon name="arrow" size={18} />
-          </button>
+          </Button>
         </section>
       </div>
       {focus === 'balance' && (
@@ -233,15 +231,16 @@ export default function Analytics({ focus, finance, dashboard, onFinance, onNavi
           <label className="sr-only" htmlFor="operation-filter">
             Тип операций
           </label>
-          <select
+          <Select
             id="operation-filter"
             value={transactionType}
-            onChange={(event) => setTransactionType(event.target.value)}
-          >
-            <option value="all">Все операции</option>
-            <option value="INCOME">Поступления</option>
-            <option value="EXPENSE">Расходы</option>
-          </select>
+            onChange={setTransactionType}
+            options={[
+              { value: 'all', label: 'Все операции' },
+              { value: 'INCOME', label: 'Поступления' },
+              { value: 'EXPENSE', label: 'Расходы' },
+            ]}
+          />
         </div>
         <div className="table-scroll">
           <table className="data-table">
