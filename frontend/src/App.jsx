@@ -1,13 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Alert, Badge, Button, Input } from 'antd'
-import { api, patch, post, setCsrf, date } from './api'
+import { Alert, Button, Input } from 'antd'
+import { api, patch, post, setCsrf } from './api'
 import { Icon, Loading } from './components/Ui'
 import Mascot from './components/Mascot'
+import AlfaLogo from './components/AlfaLogo'
+import Notifications from './components/notifications/Notifications'
+import { Text } from '@alfalab/core-components-text'
+import { ChevronDownMIcon } from '@alfalab/icons-glyph/ChevronDownMIcon'
 import Dashboard from './pages/Dashboard'
 import Analytics from './pages/Analytics'
 import Loans from './pages/Loans'
 import FinancingWizard from './pages/FinancingWizard'
-import Applications from './pages/Applications'
+import ClientApplications from './pages/client/Applications'
+import StaffApplications from './pages/staff/StaffApplications'
 import Hypothesis from './pages/Hypothesis'
 
 function routeFromHash() {
@@ -215,6 +220,7 @@ export default function App() {
   }
   if (!ready) return <Loading />
   if (!me) return <Login busy={busy} error={error} onLogin={login} />
+  const Applications = me.role === 'STAFF' ? StaffApplications : ClientApplications
   const page = me.role === 'CLIENT' ? route.page : 'applications'
 
   return (
@@ -331,15 +337,8 @@ function Header({
 }) {
   const [popover, setPopover] = useState('')
   const ref = useRef(null)
-  const actionable = applications.filter((application) =>
-    ['NEEDS_INFO', 'APPROVED', 'COUNTEROFFER', 'OFFER_ACCEPTED', 'SIGNED'].includes(
-      application.status,
-    ),
-  )
-  const unread =
-    notifications.filter((item) => !item.read).length +
-    applicationNotifications.filter((item) => !item.read_at).length
   useEffect(() => {
+    if (popover !== 'profile') return
     const close = (event) => {
       if (!ref.current?.contains(event.target)) setPopover('')
     }
@@ -352,148 +351,94 @@ function Header({
       document.removeEventListener('pointerdown', close)
       document.removeEventListener('keydown', escape)
     }
-  }, [])
+  }, [popover])
   function go(target) {
     setPopover('')
     onNavigate(target)
   }
   return (
-    <header className="app-header" ref={ref}>
+    <header className="app-header">
       <a className="skip-link" href="#main-content">
         К содержимому
       </a>
+      <button
+        type="button"
+        className="header-brand"
+        aria-label="Альфа-Банк — на главную"
+        onClick={() => go(me.role === 'STAFF' ? 'applications' : 'home')}
+      >
+        <AlfaLogo />
+      </button>
       {!home && me.role === 'CLIENT' && (
         <Button type="text" className="back-link" onClick={() => go('home')}>
           <Icon name="back" size={19} />
           На главную
         </Button>
       )}
-      {me.role === 'STAFF' && (
-        <span className="staff-label">Кредитный кабинет · Рабочее место</span>
-      )}
       <div className="account">
-        <Button
-          type="text"
-          className="bell"
-          aria-label={`Уведомления${unread ? `, непрочитанных: ${unread}` : ''}`}
-          aria-controls="notifications-panel"
-          aria-expanded={popover === 'notifications'}
-          onClick={() => setPopover((value) => (value === 'notifications' ? '' : 'notifications'))}
-        >
-          <Badge dot={unread > 0} offset={[-2, 3]}>
-            <Icon name="bell" size={30} />
-          </Badge>
-        </Button>
+        <Notifications
+          open={popover === 'notifications'}
+          onOpenChange={(open) => setPopover(open ? 'notifications' : '')}
+          notifications={notifications}
+          applicationNotifications={applicationNotifications}
+          applications={applications}
+          nextPaymentDate={finance?.loans?.[0]?.next_payment_date}
+          onNavigate={onNavigate}
+          onHypothesis={onHypothesis}
+        />
         <span className="account-divider" />
-        <Button
-          type="text"
-          className="profile-button"
-          aria-label="Меню профиля"
-          aria-expanded={popover === 'profile'}
-          onClick={() => setPopover((value) => (value === 'profile' ? '' : 'profile'))}
-        >
-          <span className="profile-avatar">{me.label?.slice(0, 1)}</span>
-          <Icon name="down" size={20} />
-        </Button>
-      </div>
-      {popover === 'profile' && (
-        <div className="popover profile-menu">
-          <strong>{me.label}</strong>
-          <span className="muted">
-            {me.role === 'CLIENT' ? 'Предприниматель' : 'Кредитный специалист'}
-          </span>
-          {me.role === 'CLIENT' && (
-            <>
-              <Button type="text" onClick={() => go('home')}>
-                Мои финансы
-              </Button>
-              <Button type="text" onClick={() => go('loans')}>
-                Кредитная нагрузка
-              </Button>
-              <Button type="text" onClick={() => go('analytics/cashflow')}>
-                Доходы и расходы
-              </Button>
-            </>
-          )}
-          <Button type="text" onClick={() => go('applications')}>
-            Заявки и кредиты
-          </Button>
+        <div className="profile-control" ref={ref}>
           <Button
             type="text"
-            onClick={() => {
-              setPopover('')
-              onLogout()
-            }}
-            disabled={busy}
+            className={`profile-button${me.role === 'STAFF' ? ' staff-profile-button' : ''}`}
+            aria-label="Меню профиля"
+            aria-expanded={popover === 'profile'}
+            onClick={() => setPopover((value) => (value === 'profile' ? '' : 'profile'))}
           >
-            <Icon name="exit" size={18} />
-            Выйти из кабинета
+            <span className="profile-avatar">{me.label?.slice(0, 1)}</span>
+            {me.role === 'STAFF' ? (
+              <ChevronDownMIcon className="staff-profile-chevron" aria-hidden="true" />
+            ) : (
+              <Icon name="down" size={20} />
+            )}
           </Button>
-        </div>
-      )}
-      {popover === 'notifications' && (
-        <div
-          className="popover notifications"
-          id="notifications-panel"
-          role="region"
-          aria-label="Уведомления"
-        >
-          <h3>Уведомления</h3>
-          {applicationNotifications.map((item) => (
-            <Button
-              type="text"
-              key={item.id}
-              className={`notifications-item${item.read_at ? '' : ' notification-unread'}`}
-              onClick={() => go('applications/' + item.application_id)}
-            >
-              <small className="notification-meta">
-                {item.read_at ? 'Заявка' : 'Новое решение'} · {date(item.created_at)}
-              </small>
-              <span className="notification-title">{item.message}</span>
-            </Button>
-          ))}
-          {notifications.map((item) => (
-            <Button
-              type="text"
-              key={item.id}
-              className={`notifications-item${item.read ? '' : ' notification-unread'}`}
-              onClick={() => {
-                setPopover('')
-                onHypothesis(item.hypothesis_id)
-              }}
-            >
-              <small className="notification-meta">
-                {item.read ? 'Гипотеза' : 'Новая гипотеза'} · {date(item.created_at)}
-              </small>
-              <span className="notification-title">{item.title}</span>
-              <small className="notification-action">
-                Посмотреть объяснение <Icon name="arrow" size={14} />
-              </small>
-            </Button>
-          ))}
-          {actionable.length
-            ? actionable.slice(0, 4).map((application) => (
-                <Button
-                  type="text"
-                  key={application.id}
-                  className="notifications-item"
-                  onClick={() => go('applications/' + application.id)}
-                >
-                  <span className="notification-title">
-                    Заявка № {application.id.slice(0, 8).toUpperCase()}
-                  </span>
-                  <small className="notification-action">
-                    Открыть заявку <Icon name="arrow" size={14} />
-                  </small>
-                </Button>
-              ))
-            : !notifications.length &&
-              !applicationNotifications.length && <p>Новых уведомлений пока нет.</p>}
-          {finance?.loans[0] && (
-            <p>Ближайшее списание по кредиту — {date(finance.loans[0].next_payment_date)}.</p>
+          {popover === 'profile' && (
+            <div className="popover profile-menu">
+              <Text view="accent-primary-small">{me.label}</Text>
+              <Text view="paragraph-secondary-small" className="muted">
+                {me.role === 'CLIENT' ? 'Предприниматель' : 'Кредитный специалист'}
+              </Text>
+              {me.role === 'CLIENT' && (
+                <>
+                  <Button type="text" onClick={() => go('home')}>
+                    Мои финансы
+                  </Button>
+                  <Button type="text" onClick={() => go('loans')}>
+                    Кредитная нагрузка
+                  </Button>
+                  <Button type="text" onClick={() => go('analytics/cashflow')}>
+                    Доходы и расходы
+                  </Button>
+                </>
+              )}
+              <Button type="text" onClick={() => go('applications')}>
+                Заявки и кредиты
+              </Button>
+              <Button
+                type="text"
+                onClick={() => {
+                  setPopover('')
+                  onLogout()
+                }}
+                disabled={busy}
+              >
+                <Icon name="exit" size={18} />
+                Выйти из кабинета
+              </Button>
+            </div>
           )}
         </div>
-      )}
+      </div>
     </header>
   )
 }

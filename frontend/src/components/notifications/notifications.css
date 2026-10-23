@@ -1,0 +1,107 @@
+﻿.notifications-trigger {
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.notifications-trigger:hover {
+  color: var(--ink);
+  background: #e9eaec;
+}
+.notifications-trigger:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 4px;
+}
+.notifications-unread-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  top: 6px;
+  right: 3px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+.notifications-panel {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 16px 50px #17171724;
+}
+.notifications-heading {
+  flex: 0 0 auto;
+  padding: 22px 24px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.notifications-heading h3 {
+  margin: 0;
+}
+.notifications-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 16px 12px 24px;
+}
+.notifications-list:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
+}
+.notifications-panel .notifications-item {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 14px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+.notifications-panel .notifications-item:hover {
+  background: #f8f8f8;
+}
+.notifications-panel .notifications-item:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
+}
+.notifications-panel .notification-title,
+.notifications-panel .notification-meta,
+.notifications-panel .notification-action {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.notifications-panel .notification-title {
+  margin: 6px 0;
+}
+.notifications-panel .notification-meta,
+.notifications-panel .notification-action,
+.notifications-empty,
+.notifications-payment {
+  color: var(--muted);
+}
+.notifications-empty,
+.notifications-payment {
+  margin: 16px 0;
+}
+@media (max-width: 600px) {
+  .notifications-heading {
+    padding: 16px;
+  }
+  .notifications-list {
+    padding-left: 16px;
+    padding-right: 10px;
+  }
+}

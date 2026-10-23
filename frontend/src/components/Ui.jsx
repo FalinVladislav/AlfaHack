@@ -81,6 +81,7 @@ export function Loading() {
   )
 }
 
+/** @param {{ title: string, children?: import('react').ReactNode, action?: import('react').ReactNode }} props */
 export function Empty({ title, children, action }) {
   return (
     <section className="surface empty-state">
