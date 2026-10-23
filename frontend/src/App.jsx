@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Input } from 'antd'
+import { Alert, Badge, Button, Input } from 'antd'
 import { api, patch, post, setCsrf, date } from './api'
 import { Icon, Loading } from './components/Ui'
 import Mascot from './components/Mascot'
@@ -369,8 +369,9 @@ function Header({
           aria-expanded={popover === 'notifications'}
           onClick={() => setPopover((value) => (value === 'notifications' ? '' : 'notifications'))}
         >
-          <Icon name="bell" size={30} />
-          {(actionable.length > 0 || unread > 0) && <i />}
+          <Badge dot={unread > 0} offset={[-2, 3]}>
+            <Icon name="bell" size={30} />
+          </Badge>
         </Button>
         <span className="account-divider" />
         <Button
@@ -428,32 +429,33 @@ function Header({
         >
           <h3>Уведомления</h3>
           {applicationNotifications.map((item) => (
-            <button
+            <Button
+              type="text"
               key={item.id}
-              className={item.read_at ? '' : 'notification-unread'}
+              className={`notifications-item${item.read_at ? '' : ' notification-unread'}`}
               onClick={() => go('applications/' + item.application_id)}
             >
-              <small>
+              <small className="notification-meta">
                 {item.read_at ? 'Заявка' : 'Новое решение'} · {date(item.created_at)}
               </small>
-              <span>{item.message}</span>
-            </button>
+              <span className="notification-title">{item.message}</span>
+            </Button>
           ))}
           {notifications.map((item) => (
             <Button
               type="text"
               key={item.id}
-              className={item.read ? '' : 'notification-unread'}
+              className={`notifications-item${item.read ? '' : ' notification-unread'}`}
               onClick={() => {
                 setPopover('')
                 onHypothesis(item.hypothesis_id)
               }}
             >
-              <small>
+              <small className="notification-meta">
                 {item.read ? 'Гипотеза' : 'Новая гипотеза'} · {date(item.created_at)}
               </small>
-              <span>{item.title}</span>
-              <small>
+              <span className="notification-title">{item.title}</span>
+              <small className="notification-action">
                 Посмотреть объяснение <Icon name="arrow" size={14} />
               </small>
             </Button>
@@ -463,10 +465,13 @@ function Header({
                 <Button
                   type="text"
                   key={application.id}
+                  className="notifications-item"
                   onClick={() => go('applications/' + application.id)}
                 >
-                  Заявка № {application.id.slice(0, 8).toUpperCase()}
-                  <small>
+                  <span className="notification-title">
+                    Заявка № {application.id.slice(0, 8).toUpperCase()}
+                  </span>
+                  <small className="notification-action">
                     Открыть заявку <Icon name="arrow" size={14} />
                   </small>
                 </Button>

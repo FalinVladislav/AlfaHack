@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Button } from 'antd'
+import { Button, Card } from 'antd'
 import Mascot from '../components/Mascot'
 import { Loading, money, percent, sum } from '../components/Ui'
 
@@ -136,51 +136,45 @@ export default function Dashboard({
         </Button>
       </section>
       {opportunity ? (
-        <section className="hypothesis" aria-label="Возможности развития бизнеса">
-          <div className="hyp-surface">
-            <Button type="text" className="hyp-main" onClick={() => onHypothesis(opportunity.id)}>
+        <Card className="goal-review-card" variant="borderless">
+          <section className="goal-review-content" aria-label="Возможности развития бизнеса">
+            <div className="goal-review-copy">
               <h2>{opportunity.title}</h2>
-              <small>{opportunity.highlight}</small>
-            </Button>
-            <Button
-              type="text"
-              className="hyp-edge left"
-              onClick={() => changeSlide(-1)}
-              aria-label="Предыдущая возможность"
-              disabled={cards.length < 2}
-            >
-              ‹
-            </Button>
-            <Button
-              type="text"
-              className="hyp-edge right"
-              onClick={() => changeSlide(1)}
-              aria-label="Следующая возможность"
-              disabled={cards.length < 2}
-            >
-              ›
-            </Button>
-            <div
-              className="slide-dots"
-              aria-label={`Возможность ${(slide % cards.length) + 1} из ${cards.length}`}
-            >
-              {cards.map((card, index) => (
-                <Button
-                  type="text"
-                  key={card.id}
-                  className={index === slide % cards.length ? 'selected' : ''}
-                  onClick={() => setSlide(index)}
-                  aria-label={`Возможность ${index + 1}`}
-                  aria-pressed={index === slide % cards.length}
-                />
-              ))}
+              <p>{opportunity.highlight}</p>
             </div>
-          </div>
-        </section>
-      ) : (
-        <div className="hypothesis" aria-hidden="true" />
-      )}
-      <div className="hypothesis-progress" role="status" aria-live="polite">
+            <div className="goal-review-controls">
+              <Button type="primary" onClick={() => onHypothesis(opportunity.id)}>
+                Открыть рекомендацию
+              </Button>
+              {cards.length > 1 && (
+                <div
+                  className="goal-review-pager"
+                  aria-label={`Возможность ${(slide % cards.length) + 1} из ${cards.length}`}
+                >
+                  <Button
+                    type="text"
+                    onClick={() => changeSlide(-1)}
+                    aria-label="Предыдущая возможность"
+                  >
+                    ‹
+                  </Button>
+                  <span aria-hidden="true">
+                    {(slide % cards.length) + 1} / {cards.length}
+                  </span>
+                  <Button
+                    type="text"
+                    onClick={() => changeSlide(1)}
+                    aria-label="Следующая возможность"
+                  >
+                    ›
+                  </Button>
+                </div>
+              )}
+            </div>
+          </section>
+        </Card>
+      ) : null}
+      <div className="goal-review-progress" role="status" aria-live="polite">
         {insightsError ||
           (insights && !['READY', 'QUEUED', 'RUNNING'].includes(insights.job.status)
             ? insights.job.message
