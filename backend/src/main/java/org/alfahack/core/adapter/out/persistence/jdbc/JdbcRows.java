@@ -16,7 +16,9 @@ public final class JdbcRows {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((
             key,
-            value) -> result.put(key, value instanceof java.sql.Date date ? date.toLocalDate() : value));
+            value) -> result.put(key, value instanceof java.sql.Date date
+                ? date.toLocalDate()
+                : value instanceof java.sql.Timestamp timestamp ? timestamp.toLocalDateTime() : value));
         return result;
     }
 

@@ -514,15 +514,30 @@ paths:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/checks:
     post:
-      summary: Запустить проверку на синтетическом профиле
+      summary: Повторить скоринг по сохранённым сведениям компании после ошибки или уточнения
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+  /applications/{id}/withdraw:
+    post:
+      summary: Отозвать заявку до решения сотрудника
       parameters: [{$ref: '#/components/parameters/id'}]
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [expected_version]
               properties:
-                demo_profile: {type: string, enum: [RETAIL, MANUFACTURING, IT, CAFE, LOGISTICS, AGRICULTURE, CONSTRUCTION, MISSING_INFO, MOCK_FAILURE, PRIORITY_CONFLICT]}
+                expected_version: {type: integer}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /applications/{id}/copy:
+    post:
+      summary: Создать новый черновик на основе исходного запроса
+      parameters: [{$ref: '#/components/parameters/id'}]
       responses:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/documents:
@@ -569,8 +584,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [offer_version]
+              required: [offer_id, offer_version]
               properties:
+                offer_id: {type: string, format: uuid}
                 offer_version: {type: integer}
       responses:
         '200': {$ref: '#/components/responses/ok'}
@@ -582,13 +598,13 @@ paths:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/contract:
     get:
-      summary: Демонстрационный договор
+      summary: Договор на принятую версию предложения
       parameters: [{$ref: '#/components/parameters/id'}]
       responses:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/contract/sign:
     post:
-      summary: Демонстрационная подпись
+      summary: Подтвердить подпись и запустить локальную имитацию выдачи
       parameters: [{$ref: '#/components/parameters/id'}, {$ref: '#/components/parameters/key'}]
       requestBody:
         required: true
@@ -603,7 +619,7 @@ paths:
         '200': {$ref: '#/components/responses/ok'}
   /applications/{id}/disburse:
     post:
-      summary: Демонстрационная выдача
+      summary: Повторить зачисление после сбоя подписанной заявки
       parameters: [{$ref: '#/components/parameters/id'}, {$ref: '#/components/parameters/key'}]
       responses:
         '200': {$ref: '#/components/responses/ok'}
@@ -626,6 +642,75 @@ paths:
   /staff/applications/{id}:
     get:
       summary: Карточка заявки сотрудника
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+  /staff/applications/{id}/claim:
+    post:
+      summary: Атомарно взять заявку в работу
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_version]
+              properties:
+                expected_version: {type: integer}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /staff/applications/{id}/preview:
+    post:
+      summary: Пересчитать условия и оценку риска перед решением
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: {type: number}
+                term_months: {type: integer}
+                duration_days: {type: integer}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+  /staff/applications/{id}/decision:
+    post:
+      summary: Записать окончательное решение ответственного сотрудника
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_version, decision_type, calculation_token, internal_reason, client_message]
+              properties:
+                expected_version: {type: integer}
+                decision_type: {type: string, enum: [APPROVE, COUNTEROFFER, REJECT]}
+                calculation_token: {type: string}
+                amount: {type: number}
+                term_months: {type: integer}
+                duration_days: {type: integer}
+                reason: {type: string}
+                internal_reason: {type: string}
+                client_message: {type: string}
+                divergence_reason: {type: string}
+                expires_at: {type: string, format: date-time}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /application-notifications:
+    get:
+      summary: Уведомления клиента о решениях по заявкам
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+  /application-notifications/{id}/read:
+    post:
+      summary: Отметить просмотр уведомления клиентом
       parameters: [{$ref: '#/components/parameters/id'}]
       responses:
         '200': {$ref: '#/components/responses/ok'}

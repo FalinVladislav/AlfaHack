@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.LocalDateTime;
 import org.alfahack.features.products.port.ProductCatalog;
 import org.alfahack.features.scoring.port.ProfileCatalog;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +60,10 @@ public class SyntheticFinanceData implements CommandLineRunner {
         int employees
     ) {
         var profile = profiles.get(profileKey);
+        if (count("SELECT COUNT(*) FROM company_risk_facts WHERE company_id=?", company) == 0)
+            db.update("INSERT INTO company_risk_facts VALUES (?,?,?,?,?,?,?,?)", company,
+                profile.currentAssets(), profile.currentLiabilities(), profile.collateralValue(),
+                profile.overdueDays(), profile.creditHistory(), "Внутренние сведения банка", LocalDateTime.now());
         db.update(
             "UPDATE companies SET company_id=id,okved=?,business_age=?,industry=?,employees=?,annual_revenue=? WHERE id=? AND company_id IS NULL",
             okved, profile.businessMonths(), profile.sector(), employees,

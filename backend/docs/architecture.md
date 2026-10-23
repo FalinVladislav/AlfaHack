@@ -62,7 +62,7 @@ features/documents/
 
 Зависимости направлены к интерфейсам: HTTP → входной порт ← сервис → выходной порт ← JDBC/HTTP/ресурсный адаптер. Другие фичи также вызываются через входные порты. Для нового транспорта нужно реализовать адаптер, вызывающий тот же порт; сервисы не принимают servlet-объекты или `MultipartFile`. Они не импортируют Spring, JDBC, Jackson или сетевые классы. Ошибки классифицируются через `DomainException.Kind`; HTTP-статусы выбирает только HTTP-адаптер.
 
-`FeatureConfiguration` связывает интерфейсы с реализациями. `UnitOfWork` сохраняет прежние границы транзакций подачи, проверок, обновления черновика, документов, принятия предложения, подписи и выдачи; вложенные сценарии используют одну транзакцию. SQL, схема таблиц, optimistic locking, ключи идемпотентности и URL `/api/v1` сохранены. JDBC-даты преобразуются в `LocalDate` внутри адаптера. Существующие динамические проекции `Map<String,Object>` сохранены для совместимости API; общие значения вынесены в доменные records.
+`FeatureConfiguration` связывает интерфейсы с реализациями. `UnitOfWork` задаёт транзакции подачи, скоринга, закрепления, решения, ответа клиента, подписи и выдачи. Подпись и выдача фиксируются раздельно: подписанная заявка сохраняется даже при сбое зачисления, а восстановление повторяет выдачу. Переходы защищены версией и текущим состоянием; ключи идемпотентности защищают повтор запросов. JDBC-даты преобразуются внутри адаптера. Существующие динамические проекции `Map<String,Object>` сохранены для совместимости API.
 
 HTTP-авторизация обрабатывает cookie и CSRF в `HttpAuth`; проверку учётных данных, сессий и ролей выполняют сервис авторизации и доменная модель пользователя. Для другого транспорта вызывается `AuthUseCases.authenticate` со своим способом передачи токена.
 
@@ -71,16 +71,26 @@ HTTP-авторизация обрабатывает cookie и CSRF в `HttpAuth
 ```mermaid
 stateDiagram-v2
   [*] --> SUBMITTED
-  SUBMITTED --> CHECKING: сотрудник запускает проверку
+  SUBMITTED --> CHECKING: система запускает скоринг
   CHECKING --> NEEDS_INFO: недостаточно сведений
-  NEEDS_INFO --> CHECKING: файл подтверждён
-  CHECKING --> APPROVED: учебные правила пройдены
-  CHECKING --> COUNTEROFFER: ограничение платежа
-  CHECKING --> REJECTED: стоп-правило
+  CHECKING --> SCORING_ERROR: техническая ошибка
+  SCORING_ERROR --> CHECKING: повтор оценки
+  NEEDS_INFO --> CHECKING: сведения подтверждены
+  CHECKING --> AWAITING_DECISION: рекомендация рассчитана
+  AWAITING_DECISION --> IN_REVIEW: сотрудник взял в работу
+  AWAITING_DECISION --> WITHDRAWN: клиент отозвал
+  IN_REVIEW --> WITHDRAWN: клиент отозвал
+  IN_REVIEW --> APPROVED: сотрудник одобрил
+  IN_REVIEW --> COUNTEROFFER: сотрудник изменил условия
+  IN_REVIEW --> REJECTED: сотрудник отказал
   APPROVED --> OFFER_ACCEPTED: клиент принимает
   COUNTEROFFER --> OFFER_ACCEPTED: клиент принимает
-  OFFER_ACCEPTED --> SIGNED: демоподпись
-  SIGNED --> DISBURSED: демовыдача
+  APPROVED --> EXPIRED: срок истёк
+  COUNTEROFFER --> EXPIRED: срок истёк
+  APPROVED --> CLOSED: клиент отказался
+  COUNTEROFFER --> CLOSED: клиент отказался
+  OFFER_ACCEPTED --> SIGNED: подпись
+  SIGNED --> DISBURSED: имитация выдачи
 ```
 
-Главные сущности: `companies`, `demo_accounts`, `account_credentials`, `sessions`, `drafts`, `quotes`, `applications`, `scoring_reports`, `info_requests`, `documents`, `loans`, `ledger_events`, `application_events`, `idempotency_records`, `assistant_proposals`. `quotes` сохраняет исходный расчёт, а `applications` — снимок запроса. `scoring_reports` хранит объяснимый результат пяти метрик. Журнал `application_events` фиксирует переходы. Семь отраслевых профилей создаются `SyntheticProfiles`, источники заменены `MockSources`; схема, пороги и JSON-примеры описаны в [credit-policy.md](credit-policy.md).
+Главные сущности кредитного пути: `drafts`, `quotes`, `applications`, неизменяемые `application_requests`, `scoring_reports`, история `scoring_runs`, `company_risk_facts`, `application_offers`, `bank_decisions`, `application_responses`, `application_contracts`, `loans`, `loan_schedule`, `ledger_events`, `application_notifications`, `application_events`. Исходный запрос и предложение разделены. Сотрудник не выбирает тестовый профиль для смены результата: скоринг читает данные компании из БД и выдаёт рекомендацию. Окончательное решение записывается отдельно. Подробности — в [credit-policy.md](credit-policy.md).

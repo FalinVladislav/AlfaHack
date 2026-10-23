@@ -36,7 +36,7 @@ public class JdbcFinanceRepository implements FinanceRepository {
 
     public List<Map<String, Object>> issuedLoans(String companyId) {
         return rows(db.queryForList(
-            "SELECT l.id,l.company_id,a.product_id AS name,l.balance AS remaining_debt,l.next_payment_amount AS monthly_payment,a.annual_rate AS rate,l.next_payment_date, 'ISSUED' AS source,a.term_months,a.duration_days,l.created_at, (SELECT MIN(e.event_date) FROM ledger_events e WHERE e.company_id=l.company_id AND e.kind='DISBURSEMENT' AND e.source=CONCAT('Выдача кредита ',l.id)) AS issue_date FROM loans l JOIN applications a ON a.id=l.application_id WHERE l.company_id=? ORDER BY l.next_payment_date",
+            "SELECT l.id,l.company_id,COALESCE(o.product_id,a.product_id) AS name,l.balance AS remaining_debt,l.next_payment_amount AS monthly_payment,COALESCE(o.annual_rate,a.annual_rate) AS rate,l.next_payment_date, 'ISSUED' AS source,COALESCE(o.term_months,a.term_months) AS term_months,COALESCE(o.duration_days,a.duration_days) AS duration_days,l.created_at, (SELECT MIN(e.event_date) FROM ledger_events e WHERE e.company_id=l.company_id AND e.kind='DISBURSEMENT' AND e.source=CONCAT('Выдача кредита ',l.id)) AS issue_date FROM loans l JOIN applications a ON a.id=l.application_id LEFT JOIN bank_decisions d ON d.application_id=a.id LEFT JOIN application_offers o ON o.id=d.offer_id WHERE l.company_id=? ORDER BY l.next_payment_date",
             companyId));
     }
 
