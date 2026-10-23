@@ -69,6 +69,65 @@ public class ApplicationsController {
         return apps.check(user(request), id, body == null ? null : Util.string(body, "demo_profile"));
     }
 
+    @PostMapping("/staff/applications/{id}/claim")
+    public Map<String, Object> claim(
+        HttpServletRequest request,
+        @PathVariable String id,
+        @RequestBody Map<String, Object> body
+    ) {
+        return apps.claim(user(request), id, Util.number(body.get("expected_version"), 1,
+            Integer.MAX_VALUE, "expected_version"));
+    }
+
+    @PostMapping("/staff/applications/{id}/preview")
+    public Map<String, Object> preview(
+        HttpServletRequest request,
+        @PathVariable String id,
+        @RequestBody Map<String, Object> body
+    ) {
+        return apps.preview(user(request), id, body);
+    }
+
+    @PostMapping("/staff/applications/{id}/decision")
+    public Map<String, Object> decision(
+        HttpServletRequest request,
+        @PathVariable String id,
+        @RequestBody Map<String, Object> body
+    ) {
+        return apps.decide(user(request), id, body);
+    }
+
+    @PostMapping("/applications/{id}/withdraw")
+    public Map<String, Object> withdraw(
+        HttpServletRequest request,
+        @PathVariable String id,
+        @RequestBody Map<String, Object> body
+    ) {
+        return apps.withdraw(user(request), id, Util.number(body.get("expected_version"), 1,
+            Integer.MAX_VALUE, "expected_version"));
+    }
+
+    @PostMapping("/applications/{id}/copy")
+    public Map<String, Object> copy(
+        HttpServletRequest request,
+        @PathVariable String id
+    ) {
+        return apps.copyToDraft(user(request), id);
+    }
+
+    @GetMapping("/application-notifications")
+    public List<Map<String, Object>> notifications(HttpServletRequest request) {
+        return apps.notifications(user(request));
+    }
+
+    @PostMapping("/application-notifications/{id}/read")
+    public List<Map<String, Object>> readNotification(
+        HttpServletRequest request,
+        @PathVariable String id
+    ) {
+        return apps.readNotification(user(request), id);
+    }
+
     @PostMapping("/applications/{id}/offer/accept")
     public Map<String, Object> accept(
         HttpServletRequest request,

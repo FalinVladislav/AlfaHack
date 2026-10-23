@@ -42,9 +42,7 @@ export default function Hypothesis({ id, busy, onFinance, onNavigate }) {
         <span className="hypothesis-kicker">Возможности вашего бизнеса</span>
         <h1>{hypothesis.title}</h1>
         <p>{labels[hypothesis.status]}</p>
-        <small className="muted">
-          Данные на {date(hypothesis.as_of)} · Демонстрационный бизнес
-        </small>
+        <small className="muted">Данные на {date(hypothesis.as_of)}</small>
       </header>
       {hypothesis.stale && (
         <p className="hypothesis-warning" role="status">
