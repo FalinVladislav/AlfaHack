@@ -39,6 +39,27 @@ components:
       required: true
       schema: {type: string}
   schemas:
+    ScenarioDialog:
+      type: object
+      required: [status, messages, plan_version, confirmed_version]
+      properties:
+        id: {type: string}
+        status: {type: string, enum: [NOT_STARTED, IDLE, QUEUED, RUNNING, FAILED]}
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role: {type: string, enum: [user, assistant]}
+              content: {type: string}
+        plan_version: {type: integer}
+        confirmed_version: {type: integer}
+        ready_to_prepare: {type: boolean, description: Полный рабочий план готов к восстановлению}
+        working_plan_hash: {type: string}
+        last_error: {type: string, nullable: true}
+        proposed_plan: {type: object, nullable: true, additionalProperties: true, description: Полный план SALES/CASHFLOW; см. business-scenario-dialog.md}
+        confirmed_plan: {type: object, nullable: true, additionalProperties: true}
+        plan_metrics: {type: object, additionalProperties: true}
     CreditGoal:
       type: object
       properties:
@@ -490,6 +511,177 @@ paths:
                 scenario: {type: string, enum: [BASE, STRESS]}
       responses:
         '200': {$ref: '#/components/responses/ok'}
+  /drafts/{id}/scenario-dialog:
+    get:
+      summary: Восстановить обсуждение экономики проекта
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        '200':
+          description: Диалог текущего пользователя и цели; NOT_STARTED, если обсуждения ещё нет
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioDialog'}
+  /drafts/{id}/scenario-dialog/messages:
+    post:
+      summary: Сохранить сообщение и запустить фоновый цикл tools
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, quote_id, request_id]
+              properties:
+                message: {type: string, minLength: 1, maxLength: 4000}
+                quote_id: {type: string}
+                request_id: {type: string, minLength: 8, maxLength: 80, pattern: '^[a-zA-Z0-9-]+$', description: Идемпотентность отправки; при повторе использовать прежний идентификатор}
+      responses:
+        '200':
+          description: Сохранённый диалог; далее опрашивать GET до IDLE или FAILED
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioDialog'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /drafts/{id}/scenario-dialog/prepare:
+    post:
+      summary: Восстановить готовый рабочий план без подтверждения и LLM
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [working_plan_hash]
+              properties:
+                working_plan_hash: {type: string}
+      responses:
+        '200':
+          description: Предложенный план, ожидающий подтверждения
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioDialog'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /drafts/{id}/scenario-dialog/confirm:
+    post:
+      summary: Подтвердить конкретную версию параметров проекта
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_version]
+              properties:
+                plan_version: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Подтверждённая экономика проекта
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioDialog'}
+        '409': {$ref: '#/components/responses/conflict'}
+  /drafts/{id}/scenario-dialog/retry:
+    post:
+      summary: Повторить неудавшийся модельный шаг с сохранённой историей
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        '200':
+          description: Текущий статус обсуждения
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ScenarioDialog'}
+  /quotes/{id}/business-scenarios:
+    post:
+      summary: Рассчитать три исхода с подтверждёнными зависимостями бизнеса
+      description: Использует SALES/CASHFLOW из сохранённого плана, историю бизнеса и график нового кредита. Сохраняет снимок расчёта. Без LLM на этом шаге.
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_version]
+              properties:
+                plan_version: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Формат трёх сценариев дополнен plan_version, business_plan, business_effects и метриками компонентов в scenarios[].business_effect; при нехватке истории INSUFFICIENT_DATA
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '409': {$ref: '#/components/responses/conflict'}
+  /quotes/{id}/scenarios:
+    post:
+      summary: Три условных сценария бизнеса после кредита
+      description: Сессия и CSRF. Ничего не сохраняет. Учитывает историю бизнеса, цель и график кредита. Сценарии не являются вероятностями. См. credit-scenarios.md.
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_cost: {type: number, minimum: 0, maximum: 1000000000, description: Бюджет проекта; по умолчанию сумма кредита кроме кассового разрыва}
+                monthly_revenue: {type: number, minimum: 0, maximum: 1000000000, description: Дополнительная месячная выручка; передавать вместе с monthly_expenses}
+                monthly_expenses: {type: number, minimum: 0, maximum: 1000000000, description: Все дополнительные месячные расходы}
+                delay_months: {type: integer, minimum: 0, maximum: 24}
+      responses:
+        '200':
+          description: READY с тремя сценариями либо INSUFFICIENT_DATA с пустым массивом scenarios
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, quote_id, scenarios]
+                properties:
+                  status: {type: string, enum: [READY, INSUFFICIENT_DATA]}
+                  quote_id: {type: string}
+                  model_version: {type: string}
+                  project_effect_known: {type: boolean}
+                  start_date: {type: string, format: date}
+                  end_date: {type: string, format: date}
+                  maturity_date: {type: string, format: date}
+                  purpose: {type: string}
+                  goal_text: {type: string, nullable: true}
+                  inputs: {type: object, additionalProperties: true}
+                  basis: {type: object, additionalProperties: true}
+                  assumptions: {type: array, items: {type: string}}
+                  message: {type: string}
+                  scenarios:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string, enum: [STRESS, BASE, OPTIMISTIC]}
+                        title: {type: string}
+                        revenue_change: {type: number}
+                        ending_balance: {type: number}
+                        without_credit_ending_balance: {type: number}
+                        project_and_credit_delta: {type: number}
+                        minimum_balance: {type: number}
+                        without_credit_minimum_balance: {type: number}
+                        gap_amount: {type: number}
+                        first_negative_date: {type: string, format: date, nullable: true}
+                        loan_payments: {type: number}
+                        remaining_principal: {type: number}
+                        benefit_start: {type: string, format: date}
+                        project_revenue_factor: {type: number}
+                        project_expense_factor: {type: number}
+                        points:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              date: {type: string, format: date}
+                              balance: {type: number}
+                              without_credit: {type: number}
+        '400': {description: Некорректные параметры экономики проекта}
+        '409': {$ref: '#/components/responses/conflict'}
   /applications:
     get:
       summary: Доступные заявки

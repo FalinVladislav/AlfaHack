@@ -55,15 +55,19 @@ def provider_settings():
             os.environ.get("API_TOOKEN_CLUB", "").strip())
 
 
-def provider_complete(messages):
+def provider_complete(messages, tools=None):
     base, model, key = provider_settings()
     if not key or not base or not model:
         raise ApiError(503, "MODEL_NOT_CONFIGURED")
-    request = Request(base + "/chat/completions", data=json.dumps({
+    payload = {
         "model": model, "messages": messages, "stream": False,
-        "response_format": {"type": "json_object"},
         "max_completion_tokens": int(os.environ.get("OPENAI_MAX_COMPLETION_TOKENS", "4096")),
-    }, ensure_ascii=False).encode("utf-8"), headers={
+    }
+    if tools is None:
+        payload["response_format"] = {"type": "json_object"}
+    else:
+        payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
+    request = Request(base + "/chat/completions", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={
         "Content-Type": "application/json", "Authorization": "Bearer " + key}, method="POST")
     try:
         with build_opener(NoRedirect).open(request, timeout=float(
@@ -72,6 +76,32 @@ def provider_complete(messages):
         if len(raw) > 1_000_000:
             raise ValueError("Response too large")
         choice = json.loads(raw)["choices"][0]
+        if tools is not None:
+            message = choice["message"]
+            calls = message.get("tool_calls") or []
+            if choice.get("finish_reason") not in ("stop", "tool_calls") or not isinstance(calls, list) or len(calls) > 3:
+                raise ValueError("Incomplete tool response")
+            allowed = {tool["function"]["name"] for tool in tools}
+            clean_calls, ids = [], set()
+            for call in calls:
+                function = call["function"]
+                call_id = text_field(call.get("id"), 200)
+                if call.get("type") != "function" or function.get("name") not in allowed or call_id in ids:
+                    raise ValueError("Unknown or duplicate tool call")
+                arguments = text_field(function.get("arguments"), 32000)
+                if not isinstance(json.loads(arguments), dict):
+                    raise ValueError("Invalid tool arguments")
+                ids.add(call_id)
+                clean_calls.append({"id": call_id, "type": "function", "function": {
+                    "name": function["name"], "arguments": arguments}})
+            clean = {"role": "assistant", "content": message.get("content")}
+            if clean["content"] is not None:
+                text_field(clean["content"])
+            if clean_calls:
+                clean["tool_calls"] = clean_calls
+            elif not clean.get("content"):
+                raise ValueError("Empty tool response")
+            return {"message": clean, "finish_reason": choice["finish_reason"], "model": model}
         if choice.get("finish_reason") != "stop":
             raise ValueError("Incomplete completion")
         result = json.loads(choice["message"]["content"])
@@ -94,6 +124,54 @@ def text_field(value, limit=16000):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ValueError("Invalid text field")
     return value
+
+
+TOOL_NAMES = {"get_business_context", "get_missing_inputs", "simulate_scenarios"}
+
+
+def validate_tools(body):
+    tools, messages = body.get("tools"), body.get("messages")
+    if not isinstance(tools, list) or len(tools) != 3 or not isinstance(messages, list) or not 1 <= len(messages) <= 100:
+        raise ValueError("Invalid tools request")
+    names = set()
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "function" or not isinstance(tool.get("function"), dict):
+            raise ValueError("Invalid tool schema")
+        function = tool["function"]
+        name = function.get("name")
+        if not isinstance(name, str) or name not in TOOL_NAMES or name in names or not isinstance(function.get("parameters"), dict):
+            raise ValueError("Unknown tool")
+        names.add(name)
+    pending = set()
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") not in ("system", "user", "assistant", "tool"):
+            raise ValueError("Invalid message role")
+        role = message["role"]
+        if pending and role != "tool":
+            raise ValueError("Missing tool results")
+        if role == "tool":
+            call_id = message.get("tool_call_id")
+            if not isinstance(call_id, str) or call_id not in pending:
+                raise ValueError("Unmatched tool result")
+            pending.remove(call_id)
+            text_field(message.get("content"), 64000)
+        elif role == "assistant" and message.get("tool_calls"):
+            calls = message["tool_calls"]
+            if not isinstance(calls, list) or len(calls) > 3:
+                raise ValueError("Invalid previous calls")
+            for call in calls:
+                if not isinstance(call, dict) or not isinstance(call.get("function"), dict):
+                    raise ValueError("Invalid previous call")
+                call_id = text_field(call.get("id"), 200)
+                if call_id in pending or call.get("type") != "function" or call["function"].get("name") not in TOOL_NAMES:
+                    raise ValueError("Invalid previous tool")
+                if not isinstance(json.loads(text_field(call["function"].get("arguments"), 32000)), dict):
+                    raise ValueError("Invalid previous arguments")
+                pending.add(call_id)
+        else:
+            text_field(message.get("content"), 64000 if role == "system" else 32000)
+    if pending:
+        raise ValueError("Missing tool results")
 
 
 def complete(instructions, message):
@@ -211,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {"code": "NOT_FOUND"})
 
     def do_POST(self):
-        if self.path not in ("/v1/chat", "/v1/assist"):
+        if self.path not in ("/v1/chat", "/v1/assist", "/v1/tools"):
             return self.reply(404, {"code": "NOT_FOUND"})
         try:
             if self.headers.get("Transfer-Encoding"):
@@ -227,6 +305,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/v1/chat":
                 text_field(body.get("instructions"), 64000)
                 text_field(body.get("message"))
+            elif self.path == "/v1/tools":
+                validate_tools(body)
             else:
                 validate_assist(body)
         except (ValueError, TypeError, RecursionError):
@@ -236,7 +316,10 @@ class Handler(BaseHTTPRequestHandler):
         if not SLOTS.acquire(blocking=False):
             return self.reply(503, {"code": "SERVICE_BUSY"})
         try:
-            result = complete(body["instructions"], body["message"]) if self.path == "/v1/chat" else assist(body)
+            if self.path == "/v1/tools":
+                result = provider_complete(body["messages"], body["tools"])
+            else:
+                result = complete(body["instructions"], body["message"]) if self.path == "/v1/chat" else assist(body)
             self.reply(200, result)
         except ApiError as exc:
             self.reply(exc.status, {"code": exc.code})

@@ -37,6 +37,42 @@ class FinancingLimitsIntegrationTest {
     static final User STABLE = new User("stable", "CLIENT", "STABLE", "test");
     static final LocalDate ISSUE = LocalDate.of(2026, 10, 22);
 
+    @Autowired
+    org.alfahack.core.serialization.JsonCodec json;
+
+    @Test
+    void scenarioEndpointChecksSessionCsrfOwnershipAndQuoteVersion() throws Exception {
+        var draft = drafts.create(STABLE);
+        String id = draft.get("id").toString();
+        draft = drafts.update(STABLE, id, Map.of("expected_version", draft.get("version"), "purpose", "EXPANSION",
+            "amount", "1000000", "term_months", 24, "needed_by", ISSUE.toString()));
+        var quotes = drafts.quote(STABLE, id, Map.of("expected_version", draft.get("version")));
+        String qid = list(quotes, "options").stream().filter(o -> o.get("quote_id") != null).findFirst().orElseThrow()
+            .get("quote_id").toString();
+        String path = "/api/v1/quotes/" + qid + "/scenarios";
+        mvc.perform(post(path).contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+        var login = mvc.perform(post("/api/v1/auth/sessions").contentType("application/json")
+            .content("{\"login\":\"stable\",\"password\":\"Alfa2026!\"}")).andReturn().getResponse();
+        var cookie = login.getCookie("cabinet_session");
+        var csrf = json.read(login.getContentAsString()).get("csrf");
+        mvc.perform(post(path).cookie(cookie).contentType("application/json").content("{}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(
+            post(path).cookie(cookie).header("X-CSRF-Token", csrf).contentType("application/json").content("{}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("READY"))
+            .andExpect(jsonPath("$.quote_id").value(qid)).andExpect(jsonPath("$.scenarios.length()").value(3))
+            .andExpect(jsonPath("$.project_effect_known").value(false));
+        var otherLogin = mvc.perform(post("/api/v1/auth/sessions").contentType("application/json")
+            .content("{\"login\":\"gap\",\"password\":\"Alfa2026!\"}")).andReturn().getResponse();
+        mvc.perform(post(path).cookie(otherLogin.getCookie("cabinet_session"))
+            .header("X-CSRF-Token", json.read(otherLogin.getContentAsString()).get("csrf"))
+            .contentType("application/json").content("{}")).andExpect(status().isNotFound());
+        drafts.update(STABLE, id, Map.of("expected_version", draft.get("version"), "amount", "1100000"));
+        mvc.perform(
+            post(path).cookie(cookie).header("X-CSRF-Token", csrf).contentType("application/json").content("{}"))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUOTE_STALE"));
+    }
+
     @Test
     void httpAcceptsIsoDatesAndUsesTheAuthenticatedCompany() throws Exception {
         mvc.perform(get("/api/v1/financing/limits").param("purpose", "EXPANSION"))

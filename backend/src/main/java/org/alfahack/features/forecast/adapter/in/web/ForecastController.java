@@ -22,15 +22,18 @@ public class ForecastController {
     private final HttpAuth auth;
     private final DraftUseCases drafts;
     private final ForecastUseCases forecast;
+    private final org.alfahack.features.forecast.port.CreditScenarioUseCases scenarios;
 
     public ForecastController(
         HttpAuth auth,
         DraftUseCases drafts,
-        ForecastUseCases forecast
+        ForecastUseCases forecast,
+        org.alfahack.features.forecast.port.CreditScenarioUseCases scenarios
     ) {
         this.auth = auth;
         this.drafts = drafts;
         this.forecast = forecast;
+        this.scenarios = scenarios;
     }
 
     private User user(
@@ -65,5 +68,15 @@ public class ForecastController {
         return forecast.analysis(u, drafts.quoteById(u, id),
             Util.string(body, "horizon") == null ? "30D" : Util.string(body, "horizon"),
             Util.string(body, "scenario") == null ? "BASE" : Util.string(body, "scenario"));
+    }
+
+    @PostMapping("/quotes/{id}/scenarios")
+    public Map<String, Object> scenarios(
+        HttpServletRequest request,
+        @PathVariable String id,
+        @RequestBody Map<String, Object> body
+    ) {
+        User u = user(request);
+        return scenarios.simulate(u, drafts.quoteById(u, id), body);
     }
 }

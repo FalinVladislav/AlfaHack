@@ -948,6 +948,253 @@ details summary {
 .calc-stage .stage-content {
   width: 69%;
 }
+.credit-scenarios {
+  margin: 28px 0;
+  padding: clamp(16px, 2vw, 26px);
+  border-radius: 22px;
+  background: #ffffffd9;
+}
+.credit-scenarios h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+}
+.business-dialog {
+  margin: 22px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.business-plan-confirmation {
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid #d4c5ee;
+  border-radius: 14px;
+  background: #f7f3ff;
+}
+.business-plan-confirmation .primary {
+  width: 100%;
+  font-size: 14px;
+  margin-top: 10px;
+  white-space: normal;
+}
+.business-dialog summary {
+  cursor: pointer;
+  color: #7551b2;
+}
+.business-dialog form {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+.business-dialog textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 13px;
+  resize: vertical;
+  border: 1px solid #ddd5ec;
+  border-radius: 12px;
+  background: #fff;
+  color: #171827;
+  font: inherit;
+}
+.business-dialog .text-button {
+  justify-self: start;
+  text-align: left;
+  white-space: normal;
+}
+.business-messages {
+  max-height: 340px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+.business-message {
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: #f5f1fb;
+  overflow-wrap: anywhere;
+}
+.business-message.user {
+  background: #edf5f2;
+}
+.business-message span {
+  font-size: 11px;
+  color: #727b91;
+}
+.business-message p {
+  margin: 5px 0 0;
+  white-space: pre-wrap;
+}
+.business-plan-review {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e8e3ee;
+}
+.business-plan-review dl div {
+  margin: 8px 0;
+}
+.business-plan-review dd {
+  margin-left: 0;
+  font-weight: 600;
+}
+.business-plan-component h4 {
+  margin: 20px 0 8px;
+}
+.business-parameters {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.business-parameters table {
+  min-width: 410px;
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.business-bottleneck {
+  display: block;
+  margin-top: 6px;
+}
+.business-parameters caption {
+  text-align: left;
+  color: #727b91;
+  margin: 6px 0;
+}
+.business-parameters th,
+.business-parameters td {
+  padding: 8px 7px;
+  border-bottom: 1px solid #e8e3ee;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.business-parameters th {
+  font-weight: 500;
+  color: #727b91;
+}
+.credit-scenarios .data-note {
+  line-height: 1.5;
+}
+.scenario-plan,
+.scenario-method {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 18px;
+}
+.scenario-plan summary,
+.scenario-method summary {
+  cursor: pointer;
+  color: #7551b2;
+}
+.scenario-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.scenario-inputs label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.scenario-inputs input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #ddd5ec;
+  border-radius: 10px;
+  background: #fff;
+  color: #171827;
+}
+.scenario-status {
+  margin: 18px 0;
+  min-height: 42px;
+  font-size: 14px;
+  color: #727b91;
+  line-height: 1.5;
+}
+.scenario-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.scenario-chart text {
+  fill: #727b91;
+  font-size: 12px;
+}
+.scenario-outcomes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 20px;
+}
+.scenario-outcomes article {
+  min-width: 0;
+  border-top: 2px solid var(--scenario-color);
+  padding-top: 12px;
+}
+.scenario-outcomes h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+}
+.scenario-dot {
+  flex: 0 0 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--scenario-color);
+}
+.scenario-outcomes article > span {
+  font-size: 12px;
+  color: #727b91;
+}
+.scenario-outcomes strong {
+  display: block;
+  margin-top: 6px;
+  font-size: clamp(16px, 1.6vw, 23px);
+  overflow-wrap: anywhere;
+}
+.scenario-outcomes dl {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.scenario-outcomes dl div {
+  margin: 12px 0;
+}
+.scenario-outcomes dt {
+  color: #727b91;
+}
+.scenario-outcomes dd {
+  margin: 3px 0 0;
+}
+.scenario-outcomes .data-note,
+.scenario-warning {
+  font-size: 12px;
+}
+.scenario-warning {
+  color: #a4513c;
+  line-height: 1.5;
+}
+.scenario-method ul {
+  padding-left: 18px;
+}
+.scenario-method li {
+  margin-bottom: 8px;
+}
+@media (max-width: 700px) {
+  .scenario-outcomes,
+  .scenario-inputs {
+    grid-template-columns: 1fr;
+  }
+  .scenario-outcomes strong {
+    font-size: 22px;
+  }
+  .scenario-outcomes dl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+}
 .calc-stage h1 {
   font-size: clamp(30px, 2.7vw, 44px);
   letter-spacing: -1.25px;
