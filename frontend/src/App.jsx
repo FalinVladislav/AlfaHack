@@ -11,7 +11,10 @@ import Applications from './pages/Applications'
 import Hypothesis from './pages/Hypothesis'
 
 function routeFromHash() {
-  const [page = 'home', id = '', step = '1'] = location.hash.replace(/^#\/?/, '').split('/')
+  const [page = 'home', id = '', step = '1'] = location.hash
+    .replace(/^#\/?/, '')
+    .split('?')[0]
+    .split('/')
   return {
     page: ['home', 'analytics', 'loans', 'financing', 'applications', 'hypothesis'].includes(page)
       ? page
@@ -68,7 +71,7 @@ export default function App() {
         })
     load(api('/applications'), setApplications)
     if (me.role === 'CLIENT') {
-      load(api('/finance/overview'), setFinance)
+      load(api('/finance/summary'), setFinance)
       load(api('/dashboard'), setDashboard)
     }
     return () => {
@@ -272,7 +275,15 @@ export default function App() {
             onNavigate={navigate}
           />
         )}
-        {page === 'loans' && <Loans finance={finance} today={dashboard?.demo_today} />}
+        {page === 'loans' && (
+          <Loans
+            finance={finance}
+            today={dashboard?.demo_today}
+            revision={revision}
+            run={run}
+            busy={busy}
+          />
+        )}
         {page === 'financing' && (
           <FinancingWizard
             draftId={route.id}

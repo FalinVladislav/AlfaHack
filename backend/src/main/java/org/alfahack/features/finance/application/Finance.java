@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.alfahack.core.domain.User;
+import org.alfahack.core.errors.DomainException;
 import org.alfahack.features.finance.port.FinanceRepository;
 import org.alfahack.features.finance.port.FinanceUseCases;
 
@@ -47,6 +48,30 @@ public class Finance implements FinanceUseCases {
         return result;
     }
 
+    public Map<String, Object> summary(User user) {
+        user.client();
+        var grouped = new TreeMap<YearMonth, BigDecimal[]>();
+        for (var row : repository.monthlyTotals(user.company())) {
+            var month = YearMonth.of(((Number) row.get("year_number")).intValue(),
+                ((Number) row.get("month_number")).intValue());
+            var pair = grouped.computeIfAbsent(month, ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            int index = "INCOME".equals(row.get("type")) ? 0 : 1;
+            pair[index] = pair[index].add((BigDecimal) row.get("amount"));
+        }
+        var months = new ArrayList<Map<String, Object>>();
+        grouped.forEach((
+            month,
+            pair) -> months.add(Map.of("month", month.toString(),
+                "income", pair[0], "expenses", pair[1], "net", pair[0].subtract(pair[1]))));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("company", repository.company(user.company()));
+        result.put("months", months);
+        result.put("loans", loans(user));
+        result.put("products", repository.products());
+        result.put("needs", repository.needs(user.company()));
+        return result;
+    }
+
     public List<Map<String, Object>> loans(User user) {
         user.client();
         List<Map<String, Object>> result = new ArrayList<>(repository.existingLoans(user.company()));
@@ -62,5 +87,32 @@ public class Finance implements FinanceUseCases {
         }
         result.sort(Comparator.comparing(loan -> (LocalDate) loan.get("next_payment_date")));
         return result;
+    }
+
+    public Map<String, Object> activity(
+        User user,
+        String from,
+        String to,
+        String type,
+        String category,
+        int page,
+        int size
+    ) {
+        user.client();
+        if (!List.of("ALL", "INCOME", "EXPENSE").contains(type))
+            throw DomainException.bad("INVALID_TYPE", "Неизвестный тип операции");
+        LocalDate start, end;
+        try {
+            start = from == null || from.isBlank() ? null : LocalDate.parse(from);
+            end = to == null || to.isBlank() ? null : LocalDate.parse(to);
+        } catch (RuntimeException error) {
+            throw DomainException.bad("INVALID_PERIOD", "Проверьте даты периода");
+        }
+        if (start != null && end != null && start.isAfter(end))
+            throw DomainException.bad("INVALID_PERIOD", "Начало периода позже окончания");
+        if (category != null && category.length() > 120)
+            throw DomainException.bad("INVALID_CATEGORY", "Слишком длинная категория");
+        return repository.activity(user.company(), start, end, type, category,
+            Math.max(1, page), Math.max(1, Math.min(50, size)));
     }
 }

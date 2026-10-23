@@ -231,6 +231,13 @@ components:
 security:
   - sessionCookie: []
 paths:
+  /finance/summary:
+    get:
+      summary: Краткая финансовая сводка для клиентского кабинета
+      description: Компания, месячные суммы, кредиты, продукты и потребности без полного массива операций. История запрашивается через /finance/activity.
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '403': {$ref: '#/components/responses/Error'}
   /finance/overview:
     get:
       summary: Финансовый профиль компании, операции, остатки и синтетические потребности
@@ -253,6 +260,79 @@ paths:
                   data_origin: {type: string, enum: [SYNTHETIC]}
         '401': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
+  /finance/activity:
+    get:
+      summary: Фильтрованные итоги и страница операций компании
+      description: Все суммы, месяцы, категории и страница операций используют один фильтр. Остаток определяется на конец периода и не меняется от типа операции. Только для клиента своей компании.
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date}}
+        - {name: to, in: query, schema: {type: string, format: date}}
+        - {name: type, in: query, schema: {type: string, enum: [ALL, INCOME, EXPENSE], default: ALL}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 12}}
+      responses:
+        '200':
+          description: items, total, page, size, income, expenses, net, months, expense_categories, available_categories, balance, balance_date и balances
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnyObject'}
+        '403': {$ref: '#/components/responses/Error'}
+  /finance/credit-load:
+    get:
+      summary: Кредиты и ближайшие платежи с независимыми страницами
+      parameters:
+        - {name: search, in: query, schema: {type: string}}
+        - {name: source, in: query, schema: {type: string, enum: [ALL, EXISTING, ISSUED], default: ALL}}
+        - {name: dueFrom, in: query, schema: {type: string, format: date}}
+        - {name: dueTo, in: query, schema: {type: string, format: date}}
+        - {name: loanPage, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: paymentPage, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 8}}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '403': {$ref: '#/components/responses/Error'}
+  /finance/loans/{source}/{id}/name:
+    put:
+      summary: Сохранить личное название кредита
+      description: Пустое название возвращает исходное. Проверяется принадлежность кредита компании клиента.
+      security: [{sessionCookie: [], csrfHeader: []}]
+      parameters:
+        - {name: source, in: path, required: true, schema: {type: string, enum: [EXISTING, ISSUED]}}
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 100}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '403': {$ref: '#/components/responses/Error'}
+  /finance/loans/{source}/{id}/payments:
+    post:
+      summary: Имитировать платёж по ближайшему взносу кредита
+      description: Атомарно обновляет долг, счёт, график и историю операций. Повтор с тем же Idempotency-Key возвращает исходный платёж. Реальное списание не производится.
+      security: [{sessionCookie: [], csrfHeader: []}]
+      parameters:
+        - {name: source, in: path, required: true, schema: {type: string, enum: [EXISTING, ISSUED]}}
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_due_date]
+              properties:
+                expected_due_date: {type: string, format: date}
+      responses:
+        '200': {$ref: '#/components/responses/ok'}
+        '409': {$ref: '#/components/responses/conflict'}
   /finance/loans:
     get:
       summary: Действующие обязательства и кредиты, выданные через кабинет
@@ -831,6 +911,24 @@ paths:
       summary: Очередь сотрудника
       responses:
         '200': {$ref: '#/components/responses/ok'}
+  /staff/applications/page:
+    get:
+      summary: Серверная страница очереди сотрудника с поиском и фильтрами
+      parameters:
+        - {name: tab, in: query, schema: {type: string, enum: [waiting, mine, decided, issued, history], default: waiting}}
+        - {name: query, in: query, schema: {type: string}, description: Номер заявки или компания}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: risk, in: query, schema: {type: string, enum: [LOW, MEDIUM, HIGH]}}
+        - {name: assignee, in: query, schema: {type: string}, description: Ключ сотрудника или unassigned}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 8}}
+      responses:
+        '200':
+          description: items, total, page, size, counts, statuses и assignees
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnyObject'}
+        '403': {$ref: '#/components/responses/Error'}
   /staff/applications/{id}:
     get:
       summary: Карточка заявки сотрудника

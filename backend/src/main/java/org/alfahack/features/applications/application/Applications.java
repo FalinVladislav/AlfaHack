@@ -77,6 +77,28 @@ public class Applications implements ApplicationUseCases {
         return result;
     }
 
+    public Map<String, Object> pageStaff(
+        User user,
+        String tab,
+        String query,
+        String status,
+        String risk,
+        String assignee,
+        int page,
+        int size
+    ) {
+        user.staff();
+        if (!List.of("waiting", "mine", "decided", "issued", "history").contains(tab))
+            throw DomainException.bad("INVALID_TAB", "Неизвестная вкладка заявок");
+        if (risk != null && !risk.isBlank() && !List.of("LOW", "MEDIUM", "HIGH").contains(risk))
+            throw DomainException.bad("INVALID_RISK", "Неизвестная категория риска");
+        if (query != null && query.length() > 160)
+            throw DomainException.bad("INVALID_QUERY", "Слишком длинный поисковый запрос");
+        for (String id : repository.expiringOffers())
+            expire(user, id);
+        return repository.pageStaff(user.key(), tab, query, status, risk, assignee, page, size);
+    }
+
     public Map<String, Object> raw(
         User user,
         String id
@@ -261,6 +283,7 @@ public class Applications implements ApplicationUseCases {
             repository.deleteReport(id);
             repository.insertReport(id, json.write(report));
             String outcome = (String) report.get("outcome");
+            repository.scoringSummary(id, outcome, riskCategory(report));
             if ("SOURCE_ERROR".equals(outcome)) {
                 transition(id, "SYSTEM", "CHECKING", "SCORING_ERROR", (String) report.get("code"));
             } else
@@ -626,9 +649,11 @@ public class Applications implements ApplicationUseCases {
                 repository.insertSchedule(loanId, installment, due, (BigDecimal) period.get("principal"),
                     (BigDecimal) period.get("interest"), (BigDecimal) period.get("payment"));
             }
-            repository.insertLedgerEvent(Util.id(), user.company(), today, amount, "DISBURSEMENT",
+            String disbursementId = Util.id();
+            repository.insertLedgerEvent(disbursementId, user.company(), today, amount, "DISBURSEMENT",
                 "Выдача кредита " + loanId);
             repository.creditCompany(amount, user.company());
+            repository.recordDisbursement(disbursementId, user.company(), today, amount);
             if (repository.move(id, "SIGNED", "DISBURSED", number(a.get("version")), null, null,
                 LocalDateTime.now()) != 1)
                 throw DomainException.conflict("STATE_CHANGED", "Выдача уже выполнена");

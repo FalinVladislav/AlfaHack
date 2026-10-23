@@ -7,7 +7,19 @@ public interface FinanceRepository {
 
     Map<String, Object> company(String companyId);
 
+    List<Map<String, Object>> monthlyTotals(String companyId);
+
     List<Map<String, Object>> transactions(String companyId);
+
+    Map<String, Object> activity(
+        String companyId,
+        java.time.LocalDate from,
+        java.time.LocalDate to,
+        String type,
+        String category,
+        int page,
+        int size
+    );
 
     List<Map<String, Object>> balances(String companyId);
 

@@ -14,6 +14,25 @@ public interface ApplicationsRepository {
 
     List<Map<String, Object>> listAll();
 
+    Map<String, Object> pageStaff(
+        String staffKey,
+        String tab,
+        String query,
+        String status,
+        String risk,
+        String assignee,
+        int page,
+        int size
+    );
+
+    int scoringSummary(
+        String id,
+        String outcome,
+        String risk
+    );
+
+    List<String> expiringOffers();
+
     List<Map<String, Object>> findOwned(
         String id,
         String companyId
@@ -165,6 +184,13 @@ public interface ApplicationsRepository {
     int creditCompany(
         BigDecimal amount,
         String companyId
+    );
+
+    void recordDisbursement(
+        String eventId,
+        String companyId,
+        LocalDate date,
+        BigDecimal amount
     );
 
     List<Map<String, Object>> loans(

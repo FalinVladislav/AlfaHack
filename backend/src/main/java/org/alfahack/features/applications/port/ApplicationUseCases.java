@@ -10,6 +10,17 @@ public interface ApplicationUseCases {
         User user
     );
 
+    Map<String, Object> pageStaff(
+        User user,
+        String tab,
+        String query,
+        String status,
+        String risk,
+        String assignee,
+        int page,
+        int size
+    );
+
     Map<String, Object> raw(
         User user,
         String id
