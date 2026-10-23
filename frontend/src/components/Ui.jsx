@@ -1,4 +1,5 @@
 import React from 'react'
+import { Empty as AntEmpty, Spin, Steps, Tag } from 'antd'
 
 export function Icon({ name, size = 22, ...props }) {
   const paths = {
@@ -58,20 +59,15 @@ export function Icon({ name, size = 22, ...props }) {
 }
 
 export function Progress({ step }) {
+  const labels = ['Цель кредита', 'Сумма и срок', 'Рассмотрение заявки']
   return (
-    <nav className="progress" aria-label="Прогресс оформления кредита">
-      {['Цель кредита', 'Сумма и срок', 'Рассмотрение заявки'].map((label, index) => (
-        <div
-          key={label}
-          className={`progress-step ${index + 1 === step ? 'active' : index + 1 < step ? 'done' : ''}`}
-          aria-current={index + 1 === step ? 'step' : undefined}
-        >
-          <div className="progress-line" />
-          <span className="sr-only">
-            {index + 1}. {label}
-          </span>
-        </div>
-      ))}
+    <nav className="credit-progress" aria-label="Прогресс оформления кредита">
+      <Steps
+        current={step - 1}
+        responsive={false}
+        size="small"
+        items={labels.map((title) => ({ title }))}
+      />
     </nav>
   )
 }
@@ -79,8 +75,8 @@ export function Progress({ step }) {
 export function Loading() {
   return (
     <div className="loading-state" role="status">
-      <span className="spinner" />
-      Загружаем данные…
+      <Spin size="large" />
+      <span>Загружаем данные…</span>
     </div>
   )
 }
@@ -88,10 +84,17 @@ export function Loading() {
 export function Empty({ title, children, action }) {
   return (
     <section className="surface empty-state">
-      <Icon name="document" size={36} />
-      <h2>{title}</h2>
-      {children && <p>{children}</p>}
-      {action}
+      <AntEmpty
+        image={AntEmpty.PRESENTED_IMAGE_SIMPLE}
+        description={
+          <div>
+            <h2>{title}</h2>
+            {children && <p>{children}</p>}
+          </div>
+        }
+      >
+        {action}
+      </AntEmpty>
     </section>
   )
 }
@@ -150,7 +153,17 @@ export const sum = (items, field) =>
   items.reduce((total, item) => total + Number(item[field] || 0), 0)
 
 export function Status({ value }) {
-  return (
-    <span className={`status-tag status-${value?.toLowerCase()}`}>{statuses[value] || value}</span>
-  )
+  const colors = {
+    SUBMITTED: 'processing',
+    CHECKING: 'processing',
+    NEEDS_INFO: 'warning',
+    APPROVED: 'success',
+    COUNTEROFFER: 'warning',
+    REJECTED: 'error',
+    OFFER_ACCEPTED: 'success',
+    SIGNED: 'success',
+    DISBURSED: 'success',
+    CLOSED: 'default',
+  }
+  return <Tag color={colors[value] || 'default'}>{statuses[value] || value}</Tag>
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Button } from 'antd'
 import { api, date } from '../api'
 import { Empty, Icon, Loading, money, percent } from '../components/Ui'
 
@@ -26,9 +27,9 @@ export default function Hypothesis({ id, busy, onFinance, onNavigate }) {
       <Empty
         title="Не удалось открыть гипотезу"
         action={
-          <button className="secondary" onClick={() => onNavigate('home')}>
+          <Button size="large" onClick={() => onNavigate('home')}>
             На главную
-          </button>
+          </Button>
         }
       >
         {error}
@@ -159,13 +160,13 @@ export default function Hypothesis({ id, busy, onFinance, onNavigate }) {
                   измените сценарий.
                 </p>
               ) : (
-                <button
-                  className="secondary"
+                <Button
+                  size="large"
                   disabled={busy || hypothesis.stale}
                   onClick={() => onFinance({ ...hypothesis, product_id: option.product_id })}
                 >
                   Рассмотреть условия <Icon name="arrow" size={18} />
-                </button>
+                </Button>
               )}
             </div>
           ))

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Button, Input, Select } from 'antd'
 import { api } from '../api'
 import { Icon } from './Ui'
 
@@ -77,44 +78,39 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
           <label className="sr-only" htmlFor="predefined-goal">
             Цель кредита
           </label>
-          <select
+          <Select
             id="predefined-goal"
             value={selected}
             disabled={busy || resolving}
-            required
-            onChange={(event) => {
+            placeholder="Выберите цель кредита"
+            options={[
+              ...goals.map((goal) => ({ value: goal.id, label: goal.label })),
+              { value: 'OTHER', label: 'Другое — описать своими словами' },
+            ]}
+            onChange={(value) => {
               reset()
-              setSelected(event.target.value)
-              setOther(event.target.value === 'OTHER')
+              setSelected(value)
+              setOther(value === 'OTHER')
             }}
-          >
-            <option value="" disabled>
-              Выберите цель кредита
-            </option>
-            {goals.map((goal) => (
-              <option key={goal.id} value={goal.id}>
-                {goal.label}
-              </option>
-            ))}
-            <option value="OTHER">Другое — описать своими словами</option>
-          </select>
+          />
           {catalogError && (
             <p className="goal-picker-error" role="alert">
               Не удалось загрузить список.{' '}
-              <button
-                type="button"
-                className="text-link"
+              <Button
+                type="link"
+                htmlType="button"
                 onClick={() => setCatalogRevision((value) => value + 1)}
               >
                 Повторить
-              </button>
+              </Button>
             </p>
           )}
         </>
       ) : (
         <>
-          <button
-            type="button"
+          <Button
+            type="text"
+            htmlType="button"
             className="goal-back"
             disabled={busy}
             onClick={() => {
@@ -124,12 +120,12 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
             }}
           >
             <Icon name="back" size={17} /> Выбрать цель из списка
-          </button>
+          </Button>
           <div className="textarea-wrap">
             <label className="sr-only" htmlFor="credit-goal">
               Опишите свою задачу
             </label>
-            <textarea
+            <Input.TextArea
               id="credit-goal"
               ref={textarea}
               maxLength={500}
@@ -167,8 +163,9 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
             </summary>
             <div className="goal-directions">
               {resolution.choices?.map((choice) => (
-                <button
-                  type="button"
+                <Button
+                  type="text"
+                  htmlType="button"
                   key={choice.purpose}
                   disabled={busy}
                   onClick={() =>
@@ -185,7 +182,7 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
                   }
                 >
                   {choice.label}
-                </button>
+                </Button>
               ))}
             </div>
           </details>
@@ -197,17 +194,22 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
         </p>
       )}
       {other && resolution?.status === 'READY' ? (
-        <button
-          type="button"
-          className="primary full"
+        <Button
+          type="primary"
+          htmlType="button"
+          size="large"
+          block
           disabled={busy}
           onClick={() => onConfirm(resolution)}
         >
           Подтвердить и продолжить <Icon name="arrow" />
-        </button>
+        </Button>
       ) : (
-        <button
-          className="primary full"
+        <Button
+          type="primary"
+          htmlType="submit"
+          size="large"
+          block
           disabled={busy || resolving || (other ? text.trim().length < 5 : !selected)}
         >
           {resolving
@@ -218,7 +220,7 @@ export default function GoalPicker({ initialGoal = '', busy, onConfirm }) {
               ? 'Подобрать направление'
               : 'Далее'}{' '}
           <Icon name="arrow" />
-        </button>
+        </Button>
       )}
     </form>
   )

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Select, Tag } from 'antd'
 import { date } from '../api'
 import { Empty, Icon, Loading, money, percent, productName, sum } from '../components/Ui'
 
@@ -107,18 +108,15 @@ export default function Loans({ finance, today }) {
               <label className="sr-only" htmlFor="loan-filter">
                 Кредит для отображения
               </label>
-              <select
+              <Select
                 id="loan-filter"
                 value={selected}
-                onChange={(event) => setSelected(event.target.value)}
-              >
-                <option value="all">Все кредиты</option>
-                {loans.map((loan) => (
-                  <option value={loan.id} key={loan.id}>
-                    {productName(loan.name)}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelected}
+                options={[
+                  { value: 'all', label: 'Все кредиты' },
+                  ...loans.map((loan) => ({ value: loan.id, label: productName(loan.name) })),
+                ]}
+              />
             </div>
             {visible.map((loan) => (
               <div className="payment-row" key={loan.id}>
@@ -135,7 +133,7 @@ export default function Loans({ finance, today }) {
                   <small>Плановое списание · {date(loan.next_payment_date)}</small>
                 </div>
                 <strong className="payment-amount">{money(loan.monthly_payment)}</strong>
-                <span className="status-tag">Ожидается</span>
+                <Tag color="processing">Ожидается</Tag>
               </div>
             ))}
           </section>

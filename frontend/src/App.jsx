@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Alert, Button, Input } from 'antd'
 import { api, patch, post, setCsrf, date } from './api'
 import { Icon, Loading } from './components/Ui'
 import Mascot from './components/Mascot'
@@ -231,12 +232,14 @@ export default function App() {
       />
       <main className="workspace" id="main-content">
         {error && (
-          <div className="error-banner" role="alert">
-            <span>{error}</span>
-            <button aria-label="Закрыть уведомление" onClick={() => setError('')}>
-              <Icon name="close" />
-            </button>
-          </div>
+          <Alert
+            className="page-alert"
+            type="error"
+            showIcon
+            closable
+            message={error}
+            onClose={() => setError('')}
+          />
         )}
         {page === 'home' && (
           <Dashboard
@@ -349,16 +352,17 @@ function Header({
         К содержимому
       </a>
       {!home && me.role === 'CLIENT' && (
-        <button className="back-link" onClick={() => go('home')}>
+        <Button type="text" className="back-link" onClick={() => go('home')}>
           <Icon name="back" size={19} />
           На главную
-        </button>
+        </Button>
       )}
       {me.role === 'STAFF' && (
         <span className="staff-label">Кредитный кабинет · Рабочее место</span>
       )}
       <div className="account">
-        <button
+        <Button
+          type="text"
           className="bell"
           aria-label={`Уведомления${unread ? `, непрочитанных: ${unread}` : ''}`}
           aria-controls="notifications-panel"
@@ -367,9 +371,10 @@ function Header({
         >
           <Icon name="bell" size={30} />
           {(actionable.length > 0 || unread > 0) && <i />}
-        </button>
+        </Button>
         <span className="account-divider" />
-        <button
+        <Button
+          type="text"
           className="profile-button"
           aria-label="Меню профиля"
           aria-expanded={popover === 'profile'}
@@ -377,7 +382,7 @@ function Header({
         >
           <span className="profile-avatar">{me.label?.slice(0, 1)}</span>
           <Icon name="down" size={20} />
-        </button>
+        </Button>
       </div>
       {popover === 'profile' && (
         <div className="popover profile-menu">
@@ -387,13 +392,22 @@ function Header({
           </span>
           {me.role === 'CLIENT' && (
             <>
-              <button onClick={() => go('home')}>Мои финансы</button>
-              <button onClick={() => go('loans')}>Кредитная нагрузка</button>
-              <button onClick={() => go('analytics/cashflow')}>Доходы и расходы</button>
+              <Button type="text" onClick={() => go('home')}>
+                Мои финансы
+              </Button>
+              <Button type="text" onClick={() => go('loans')}>
+                Кредитная нагрузка
+              </Button>
+              <Button type="text" onClick={() => go('analytics/cashflow')}>
+                Доходы и расходы
+              </Button>
             </>
           )}
-          <button onClick={() => go('applications')}>Заявки и кредиты</button>
-          <button
+          <Button type="text" onClick={() => go('applications')}>
+            Заявки и кредиты
+          </Button>
+          <Button
+            type="text"
             onClick={() => {
               setPopover('')
               onLogout()
@@ -402,7 +416,7 @@ function Header({
           >
             <Icon name="exit" size={18} />
             Выйти из кабинета
-          </button>
+          </Button>
         </div>
       )}
       {popover === 'notifications' && (
@@ -426,7 +440,8 @@ function Header({
             </button>
           ))}
           {notifications.map((item) => (
-            <button
+            <Button
+              type="text"
               key={item.id}
               className={item.read ? '' : 'notification-unread'}
               onClick={() => {
@@ -441,16 +456,20 @@ function Header({
               <small>
                 Посмотреть объяснение <Icon name="arrow" size={14} />
               </small>
-            </button>
+            </Button>
           ))}
           {actionable.length
             ? actionable.slice(0, 4).map((application) => (
-                <button key={application.id} onClick={() => go('applications/' + application.id)}>
+                <Button
+                  type="text"
+                  key={application.id}
+                  onClick={() => go('applications/' + application.id)}
+                >
                   Заявка № {application.id.slice(0, 8).toUpperCase()}
                   <small>
                     Открыть заявку <Icon name="arrow" size={14} />
                   </small>
-                </button>
+                </Button>
               ))
             : !notifications.length &&
               !applicationNotifications.length && <p>Новых уведомлений пока нет.</p>}
@@ -466,7 +485,6 @@ function Header({
 function Login({ busy, error, onLogin }) {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   return (
     <main className="login-page">
       <img
@@ -488,7 +506,9 @@ function Login({ busy, error, onLogin }) {
           <p className="login-caption">Вход в кредитный кабинет</p>
           <label>
             <span className="sr-only">Логин</span>
-            <input
+            <Input
+              size="large"
+              variant="filled"
               value={login}
               onChange={(event) => setLogin(event.target.value)}
               autoComplete="username"
@@ -499,45 +519,28 @@ function Login({ busy, error, onLogin }) {
           <div className="password-field">
             <label>
               <span className="sr-only">Пароль</span>
-              <input
+              <Input.Password
+                size="large"
+                variant="filled"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 placeholder="Пароль"
                 required
               />
             </label>
-            <button
-              type="button"
-              className="password-toggle"
-              aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
-              aria-pressed={showPassword}
-              onClick={() => setShowPassword((value) => !value)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="22"
-                height="22"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                aria-hidden="true"
-              >
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-                <circle cx="12" cy="12" r="3" />
-                {!showPassword && <path d="m3 3 18 18" />}
-              </svg>
-            </button>
           </div>
-          {error && (
-            <div className="error-banner" role="alert">
-              {error}
-            </div>
-          )}
-          <button className="login-submit" disabled={busy}>
+          {error && <Alert type="error" showIcon message={error} />}
+          <Button
+            type="primary"
+            size="large"
+            block
+            htmlType="submit"
+            loading={busy}
+            disabled={busy}
+          >
             {busy ? 'Входим…' : 'Войти'}
-          </button>
+          </Button>
         </form>
       </section>
       <aside className="login-visual">
