@@ -5,6 +5,8 @@ import ruRU from 'antd/locale/ru_RU'
 import App from './App.jsx'
 import 'antd/dist/reset.css'
 import './style.css'
+import './components/applications/workflow.css'
+import './pages/staff/staff.css'
 
 const theme = {
   token: {

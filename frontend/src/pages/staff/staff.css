@@ -1,0 +1,90 @@
+.staff-queue-tabs {
+  margin-bottom: 20px;
+}
+.staff-queue-tab-count {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background: #e9eaec;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.workflow-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(3, minmax(150px, 1fr)) auto;
+  align-items: end;
+  gap: 16px;
+  padding: 24px;
+}
+.staff-filter {
+  min-width: 0;
+}
+.staff-filters-reset {
+  height: 48px;
+  white-space: nowrap;
+}
+@media (max-width: 1200px) {
+  .workflow-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .staff-filters-reset {
+    justify-self: start;
+  }
+}
+@media (max-width: 600px) {
+  .workflow-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+  .staff-filters-reset {
+    justify-self: stretch;
+  }
+}
+.workflow-result-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 2px;
+}
+.workflow-table-wrap {
+  padding: 0;
+  overflow-x: auto;
+}
+.workflow-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1050px;
+  font-size: 14px;
+}
+.workflow-table th {
+  text-align: left;
+  color: #64708a;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f9f8fd;
+}
+.workflow-table th,
+.workflow-table td {
+  padding: 16px 14px;
+  border-bottom: 1px solid #eeedf4;
+  vertical-align: middle;
+}
+.workflow-table td:first-child,
+.workflow-table th:first-child {
+  padding-left: 22px;
+}
+.workflow-table tr:last-child td {
+  border-bottom: 0;
+}
+.workflow-table .secondary {
+  white-space: nowrap;
+}
+.workflow-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}

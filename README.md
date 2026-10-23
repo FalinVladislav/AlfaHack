@@ -104,6 +104,13 @@ Frontend объединяет остаток, доходы и расходы н�
 
 Форматирование frontend: `npm --prefix frontend run format`; проверка оформления: `npm --prefix frontend run format:check`.
 
+Кабинет сотрудника находится в `frontend/src/pages/staff/`: `StaffApplications.tsx` связывает очередь, карточку заявки (`StaffCard.tsx`) и окно решения (`DecisionDialog.tsx`); очередь вынесена в `StaffQueue.tsx`, типы API и props — в `types.ts`, стили очереди — в `staff.css`. Клиентские заявки остаются на JavaScript в `pages/client/Applications.jsx`. Общие элементы, подписи и стили заявок находятся в `components/applications/`. `App.jsx` выбирает страницу по роли, URL и API остаются прежними.
+
+Шапка использует общий `components/notifications/Notifications.tsx` для обеих ролей: ограниченный высотой экрана прокручиваемый список, закрытие кликом снаружи, Escape и уходом фокуса. Текст кабинета сотрудника и уведомлений подключён через `@alfalab/core-components-text`, колокольчик — `BellMIcon` из `@alfalab/icons-glyph`. Проверка поведения уведомлений: `npm --prefix frontend run test:notifications`. Вкладки категорий, поиск, выпадающие фильтры и кнопки очереди сотрудника используют Core Components Tabs/Input/Select/Button. Проверка фильтрации и пагинации: `npm --prefix frontend run test:staff`.
+
+Проверка TypeScript: `npm --prefix frontend run typecheck`. Она также выполняется перед `npm --prefix frontend run build`. Проверяются TS/TSX-файлы кабинета; остальной JS не требует одновременной миграции. После обновления зависимостей в Docker dev обновите именованный том: `docker compose -f compose.yaml -f compose.dev.yaml run --rm --no-deps web npm ci`, затем перезапустите web-контейнер.
+
+
 - `backend/src/main/java/org/alfahack/core` — общие доменные модели, ошибки, контракты транзакций и сериализации, инфраструктурные адаптеры и сборка зависимостей.
 - `backend/src/main/java/org/alfahack/features` — фичи: интерфейсы (`port`), сценарии приложения (`application`), входные HTTP-адаптеры (`adapter/in/web`) и выходные адаптеры БД, ресурсов и API (`adapter/out`).
 - `backend/src/main/resources/schema.sql` и `finance-schema.sql` — идемпотентные дополнения схемы БД; `SeedData` загружает подготовленные данные один раз. Для новых функций добавлены поля рекомендации и риска заявки, названия кредитов, платежи и отметки оплаты графика. Старые записи не удаляются.
