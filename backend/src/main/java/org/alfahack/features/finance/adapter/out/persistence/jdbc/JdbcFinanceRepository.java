@@ -156,6 +156,13 @@ public class JdbcFinanceRepository implements FinanceRepository {
         return rows(db.queryForList("SELECT * FROM loan_products ORDER BY product_id"));
     }
 
+    @Override
+    public List<Map<String, Object>> unpaidSchedule(String companyId) {
+        return rows(db.queryForList(
+            "SELECT s.loan_id,s.due_date,s.principal,s.interest,s.payment FROM loan_schedule s JOIN loans l ON l.id=s.loan_id WHERE l.company_id=? AND s.paid_at IS NULL ORDER BY s.loan_id,s.due_date",
+            companyId));
+    }
+
     public List<Map<String, Object>> needs(String companyId) {
         return rows(db.queryForList("SELECT * FROM loan_requests WHERE company_id=? ORDER BY id", companyId));
     }

@@ -35,6 +35,103 @@ class BusinessPlanTest {
             "components", List.of(sales())));
     }
 
+    static Map<String, Object> modernPlan() {
+        var plan = plan();
+        plan.put("schema_version", 2);
+        plan.put("investment_schedule", List.of(Map.of("month", 0, "share", 1)));
+        var timing = new HashMap<String, Object>();
+        BusinessPlan.TIMING.forEach((
+            key,
+            max) -> timing.put(key, range(key.equals("variable_cost_share") ? .5 : 0)));
+        plan.put("cashflow", timing);
+        rows(plan, "components").getFirst().put("resource_ids", List.of("main-channel"));
+        sourceAll(plan);
+        return plan;
+    }
+
+    static void sourceAll(Map<String, Object> plan) {
+        plan.remove("sources");
+        var sources = new java.util.ArrayList<Map<String, Object>>();
+        collectSources(plan, "", sources, ((List<?>) plan.get("assumptions")).getFirst().toString());
+        plan.put("sources", sources);
+    }
+
+    static void collectSources(
+        Object value,
+        String path,
+        List<Map<String, Object>> sources,
+        String evidence
+    ) {
+        if (value instanceof Map<?, ?> map) {
+            for (var entry : map.entrySet()) {
+                String key = entry.getKey().toString();
+                if (!key.equals("schema_version"))
+                    collectSources(entry.getValue(), path.isEmpty() ? key : path + "." + key, sources, evidence);
+            }
+        } else
+            if (value instanceof List<?> list) {
+                for (int i = 0; i < list.size(); i++)
+                    collectSources(list.get(i), path + "[" + i + "]", sources, evidence);
+            } else
+                if (value instanceof Number)
+                    sources.add(Map.of("path", path, "kind", "ASSUMPTION", "evidence", evidence));
+    }
+
+    @Test
+    void negativeMarginUsesMoreVolumeForStressRatherThanMakingStressProfitable() {
+        var plan = plan();
+        var c = rows(plan, "components").getFirst();
+        for (String key : BusinessPlan.SALES)
+            params(c, "before").put(key, 0);
+        for (String key : BusinessPlan.SALES.subList(0, 4))
+            params(c, "after").put(key, Map.of("low", 50, "base", 100, "high", 150));
+        params(c, "after").put("unit_cost", range(150));
+        params(c, "after").put("fixed_cost", range(0));
+        var outcomes = rows(new BusinessPlan().evaluate(plan), "scenarios");
+        assertEquals(new BigDecimal("-7500.00"), outcomes.getFirst().get("monthly_net_delta"));
+        assertEquals(new BigDecimal("-2500.00"), outcomes.getLast().get("monthly_net_delta"));
+    }
+
+    @Test
+    void renamedDuplicatesAndSharedResourcesAreRejected() {
+        var plan = plan();
+        var other = sales();
+        other.put("id", "second");
+        other.put("label", "Другое название");
+        plan.put("components", List.of(sales(), other));
+        assertThrows(DomainException.class, () -> new BusinessPlan().evaluate(plan));
+        params(other, "after").put("fixed_cost", range(2000));
+        var first = sales();
+        first.put("resource_ids", List.of("team"));
+        other.put("resource_ids", List.of("team"));
+        plan.put("components", List.of(first, other));
+        assertThrows(DomainException.class, () -> new BusinessPlan().evaluate(plan));
+    }
+
+    @Test
+    void modernPlanRequiresSourcesAndChecksRealEvidence() {
+        var plan = modernPlan();
+        var evaluator = new BusinessPlan();
+        assertEquals("READY", evaluator.evaluate(plan).get("status"));
+        evaluator.verifySources(plan, List.of());
+        plan.put("sources", List.of());
+        assertEquals("NEEDS_INPUTS", evaluator.evaluate(plan).get("status"));
+        sourceAll(plan);
+        var sources = rows(plan, "sources");
+        int sourceIndex = java.util.stream.IntStream.range(0, sources.size())
+            .filter(i -> "investment.base".equals(sources.get(i).get("path"))).findFirst().orElseThrow();
+        var changed = new HashMap<>(sources.get(sourceIndex));
+        changed.put("kind", "USER");
+        changed.put("evidence", "Бюджет проекта 1 млн");
+        sources.set(sourceIndex, changed);
+        assertThrows(DomainException.class, () -> evaluator.verifySources(plan, List.of()));
+        evaluator.verifySources(plan,
+            List.of(Map.of("role", "user", "request_id", "request-1", "content", changed.get("evidence"))));
+        changed.put("evidence", "Хочу открыть точку");
+        assertThrows(DomainException.class, () -> evaluator.verifySources(plan,
+            List.of(Map.of("role", "user", "request_id", "request-1", "content", changed.get("evidence")))));
+    }
+
     @SuppressWarnings("unchecked")
     static List<Map<String, Object>> rows(
         Map<String, Object> data,

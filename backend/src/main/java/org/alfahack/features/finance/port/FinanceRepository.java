@@ -27,6 +27,10 @@ public interface FinanceRepository {
 
     List<Map<String, Object>> issuedLoans(String companyId);
 
+    default List<Map<String, Object>> unpaidSchedule(String companyId) {
+        return List.of();
+    }
+
     List<Map<String, Object>> products();
 
     List<Map<String, Object>> needs(String companyId);

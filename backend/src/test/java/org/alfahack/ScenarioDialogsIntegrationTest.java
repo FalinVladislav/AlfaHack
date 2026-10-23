@@ -52,7 +52,7 @@ class ScenarioDialogsIntegrationTest {
             checkStrict(tool);
         java.nio.file.Files.writeString(java.nio.file.Path.of("target/scenario-model-fixture.json"),
             json.write(Map.of(
-                "tools", tools, "plan", BusinessPlanTest.plan(), "instructions",
+                "tools", tools, "plan", BusinessPlanTest.modernPlan(), "instructions",
                 org.alfahack.features.scenarios.application.ScenarioTools.INSTRUCTIONS)));
     }
 
@@ -98,7 +98,8 @@ class ScenarioDialogsIntegrationTest {
 
     void propose() throws Exception {
         when(model.complete(anyList(), anyList())).thenReturn(
-            call("simulate_scenarios", Map.of("plan", BusinessPlanTest.plan())), answer("Проверьте параметры плана."));
+            call("simulate_scenarios", Map.of("plan", BusinessPlanTest.modernPlan())),
+            answer("Проверьте параметры плана."));
         send("request-001");
         service.processNext();
         service.processNext();
@@ -118,7 +119,7 @@ class ScenarioDialogsIntegrationTest {
         assertTrue(persisted.get("history_json").toString().contains("cashflow"));
         service.confirm(user, id, Map.of("plan_version", 1));
         var result = service.calculate(user, drafts.quoteById(user, qid), 1);
-        assertEquals("business-dependencies-v1", result.get("model_version"));
+        assertEquals("business-dependencies-v2", result.get("model_version"));
         assertEquals(1, service.get(user, id).get("confirmed_version"));
         assertEquals(3, BusinessPlanTest.rows(result, "scenarios").size());
         assertTrue(db.queryForObject("SELECT COUNT(*) FROM business_scenario_runs", Integer.class) >= 2);
@@ -136,7 +137,8 @@ class ScenarioDialogsIntegrationTest {
     @Test
     void completeInputCheckAlsoCreatesAnUnconfirmedProposal() throws Exception {
         when(model.complete(anyList(), anyList()))
-            .thenReturn(call("get_missing_inputs", Map.of("plan", BusinessPlanTest.plan())), answer("Расчёт готов."));
+            .thenReturn(call("get_missing_inputs", Map.of("plan", BusinessPlanTest.modernPlan())),
+                answer("Расчёт готов."));
         send("request-001");
         service.processNext();
         service.processNext();
@@ -151,7 +153,7 @@ class ScenarioDialogsIntegrationTest {
     @Test
     void existingCompleteWorkingPlanCanBeRecoveredWithoutModelOrConfirmation() {
         send("request-001");
-        String plan = json.write(BusinessPlanTest.plan());
+        String plan = json.write(BusinessPlanTest.modernPlan());
         db.update("UPDATE business_scenario_dialogs SET status='IDLE',working_plan_json=? WHERE draft_id=?", plan, id);
         var state = service.get(user, id);
         assertEquals(true, state.get("ready_to_prepare"));
@@ -167,7 +169,7 @@ class ScenarioDialogsIntegrationTest {
 
     @Test
     void missingInputsPersistAsWorkingPlanAndDoNotBecomeConfirmed() throws Exception {
-        var partial = BusinessPlanTest.plan();
+        var partial = BusinessPlanTest.modernPlan();
         BusinessPlanTest.params(BusinessPlanTest.rows(partial, "components").getFirst(), "after").remove("demand");
         when(model.complete(anyList(), anyList())).thenReturn(call("get_missing_inputs", Map.of("plan", partial)),
             answer("Какой спрос ожидаете?"));
@@ -225,5 +227,175 @@ class ScenarioDialogsIntegrationTest {
         mvc.perform(post(path + "/confirm").cookie(login.getCookie("cabinet_session")).contentType("application/json")
             .content("{\"plan_version\":1}"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void correctionDoesNotResurrectAnOldProposalWhenTheModelOnlyAsksAQuestion() throws Exception {
+        propose();
+        service.confirm(user, id, Map.of("plan_version", 1));
+        when(model.complete(anyList(), anyList())).thenReturn(answer("Как изменится бюджет?"));
+        send("request-correction");
+        service.processNext();
+        var state = service.get(user, id);
+        assertNull(state.get("proposed_plan"));
+        assertNotEquals(true, state.get("ready_to_prepare"));
+        assertNotNull(state.get("confirmed_plan"));
+        assertThrows(DomainException.class, () -> service.confirm(user, id, Map.of("plan_version", 1)));
+    }
+
+    @Test
+    void earlierUserConstraintsSurviveTheFiveTurnWindow() throws Exception {
+        when(model.complete(anyList(), anyList())).thenReturn(answer("Параметры ещё уточняются."));
+        service.send(user, id,
+            Map.of("message", "Аренда оплачивается и до открытия. Нельзя использовать оборотные деньги.",
+                "quote_id", qid, "request_id", "request-history-0"));
+        service.processNext();
+        for (int i = 1; i < 7; i++) {
+            send("request-history-" + i);
+            service.processNext();
+        }
+        @SuppressWarnings("unchecked")
+        var prompts = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(model, times(7)).complete(prompts.capture(), anyList());
+        assertTrue(json.write(Map.of("messages", prompts.getValue())).contains("Нельзя использовать оборотные деньги"));
+    }
+
+    @Test
+    void newToolCallsCannotBypassTimingAndSourcesUsingALegacyPlan() throws Exception {
+        when(model.complete(anyList(), anyList())).thenReturn(
+            call("simulate_scenarios", Map.of("plan", BusinessPlanTest.plan())),
+            answer("Нужны сроки оплат и источники."));
+        send("request-legacy-plan");
+        service.processNext();
+        service.processNext();
+        assertNull(service.get(user, id).get("proposed_plan"));
+        var stored = db.queryForObject("SELECT history_json FROM business_scenario_dialogs WHERE draft_id=?",
+            String.class, id);
+        assertTrue(stored.contains("schema_version=2"));
+    }
+
+    static Map<String, Object> sparsePlan() {
+        var plan = new java.util.HashMap<String, Object>();
+        plan.put("schema_version", 2);
+        plan.put("title", "Покупка оборудования");
+        for (String key : List.of("investment", "launch_months", "cashflow", "investment_schedule", "sources"))
+            plan.put(key, null);
+        plan.put("components", List.of());
+        plan.put("assumptions", List.of());
+        return plan;
+    }
+
+    @Test
+    void equipmentGoalWithNoNumbersSavesPartialPlanAndAsksQuestionsWithToolsDisabled() throws Exception {
+        when(model.complete(anyList(), anyList())).thenReturn(
+            call("get_missing_inputs", Map.of("plan", sparsePlan())),
+            answer("Какое оборудование хотите купить? Сколько оно стоит с установкой? Когда планируете запуск?"));
+        service.send(user, id,
+            Map.of("message", "хочу купить оборудование", "quote_id", qid, "request_id", "request-equipment"));
+        service.processNext();
+        assertEquals("QUEUED", service.get(user, id).get("status"));
+        assertEquals(1, BusinessPlanTest.rows(service.get(user, id), "messages").size());
+        assertNull(service.get(user, id).get("proposed_plan"));
+        service.processNext();
+        var state = service.get(user, id);
+        assertEquals("IDLE", state.get("status"));
+        assertTrue(BusinessPlanTest.rows(state, "messages").getLast().get("content").toString()
+            .contains("Какое оборудование"));
+        verify(model).complete(anyList(), eq(List.of()));
+    }
+
+    @Test
+    void repeatedContextCallsStopAfterTwoStepsWithConcreteQuestions() throws Exception {
+        when(model.complete(anyList(), anyList())).thenReturn(call("get_business_context", Map.of()));
+        service.send(user, id,
+            Map.of("message", "хочу купить оборудование", "quote_id", qid, "request_id", "request-loop"));
+        for (int i = 0; i < 6; i++)
+            service.processNext();
+        var state = service.get(user, id);
+        assertEquals("IDLE", state.get("status"));
+        var last = BusinessPlanTest.rows(state, "messages").getLast().get("content").toString();
+        assertTrue(last.contains("Какое оборудование"));
+        assertFalse(last.contains("лимит"));
+        verify(model, times(2)).complete(anyList(), anyList());
+    }
+
+    @Test
+    void ignoredFinalOnlyModeCannotRepeatSimulationOrCreateAProposalFromMissingInputs() throws Exception {
+        when(model.complete(anyList(), anyList())).thenReturn(call("get_missing_inputs", Map.of("plan", sparsePlan())));
+        send("request-ignore-final");
+        service.processNext();
+        service.processNext();
+        var state = service.get(user, id);
+        assertEquals("IDLE", state.get("status"));
+        assertNull(state.get("proposed_plan"));
+        assertTrue(BusinessPlanTest.rows(state, "messages").getLast().get("content").toString().contains("?"));
+        verify(model, times(2)).complete(anyList(), anyList());
+    }
+
+    @Test
+    void falseReadinessAndToolCommentaryNeverReachTheVisibleConversation() throws Exception {
+        var response = call("get_missing_inputs", Map.of("plan", sparsePlan()));
+        var message = new java.util.HashMap<>((Map<String, Object>) response.get("message"));
+        message.put("content", "Расчёт готов.");
+        when(model.complete(anyList(), anyList())).thenReturn(Map.of("message", message), answer("Расчёт готов."));
+        send("request-false-ready");
+        service.processNext();
+        service.processNext();
+        var state = service.get(user, id);
+        var visible = json.write(Map.of("messages", state.get("messages")));
+        assertFalse(visible.contains("Расчёт готов"));
+        assertTrue(visible.contains("?"));
+        assertEquals("IDLE", state.get("status"));
+    }
+
+    @Test
+    void malformedProviderMessageProducesAUsefulReplyWithoutExecutingTools() throws Exception {
+        when(model.complete(anyList(), anyList()))
+            .thenReturn(Map.of("message", Map.of("role", "assistant", "tool_calls", "bad")));
+        send("request-malformed");
+        service.processNext();
+        assertEquals("IDLE", service.get(user, id).get("status"));
+        assertNull(service.get(user, id).get("proposed_plan"));
+        assertTrue(
+            BusinessPlanTest.rows(service.get(user, id), "messages").getLast().get("content").toString().contains("?"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"хочу купить оборудование", "хочу открыть вторую точку",
+            "хочу нанять сотрудника"})
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "SCENARIO_LIVE_URL", matches = ".+")
+    void liveSparseGoalsProduceUsefulQuestionsWithoutInventingAPlan(String goal) throws Exception {
+        var live = new org.alfahack.features.scenarios.adapter.out.http.HttpScenarioModel(
+            System.getenv("SCENARIO_LIVE_URL"), 70, json);
+        var trace = new java.util.ArrayList<Map<String, Object>>();
+        when(model.complete(anyList(), anyList())).thenAnswer(invocation -> {
+            List<Map<String, Object>> messages = invocation.getArgument(0);
+            List<Map<String, Object>> tools = invocation.getArgument(1);
+            var response = live.complete(messages, tools);
+            trace.add(Map.of("tools_enabled", !tools.isEmpty(), "response", response));
+            return response;
+        });
+        service.send(user, id, Map.of("message", goal, "quote_id", qid, "request_id", "request-live-goal"));
+        try {
+            for (int i = 0; i < 4 && "QUEUED".equals(service.get(user, id).get("status")); i++)
+                service.processNext();
+            var state = service.get(user, id);
+            assertEquals("IDLE", state.get("status"));
+            assertNull(state.get("proposed_plan"));
+            assertNull(state.get("confirmed_plan"));
+            var history = json.read(db.queryForObject(
+                "SELECT history_json FROM business_scenario_dialogs WHERE draft_id=?", String.class, id));
+            assertFalse(
+                BusinessPlanTest.rows(history, "messages").stream()
+                    .anyMatch(m -> "BACKEND".equals(m.get("response_origin"))),
+                "Live model needed a backend fallback; inspect target/scenario-live-*.json");
+            String answer = BusinessPlanTest.rows(state, "messages").getLast().get("content").toString();
+            assertTrue(answer.contains("?") || answer.toLowerCase(java.util.Locale.ROOT).contains("уточните"));
+            assertFalse(answer.contains("лимит"));
+            assertTrue(trace.size() <= 3);
+        } finally {
+            java.nio.file.Files.writeString(java.nio.file.Path.of("target/scenario-live-" + id + ".json"),
+                json.write(Map.of("goal", goal, "trace", trace, "dialog", service.get(user, id))));
+        }
     }
 }

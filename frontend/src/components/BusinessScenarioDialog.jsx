@@ -3,6 +3,12 @@ import { api, post } from '../api'
 import { money } from './Ui'
 
 const labels = {
+  collection_delay_days: 'Отсрочка поступлений, дней',
+  expense_advance_days: 'Оплата затрат до деятельности, дней',
+  ramp_months: 'Выход на полную загрузку, мес.',
+  prelaunch_monthly_expenses: 'Расходы до запуска, ₽/мес.',
+  revenue_tax_rate: 'Эффективный налог с доп. выручки, доля',
+  variable_cost_share: 'Переменная доля расходов бизнеса',
   demand: 'Спрос',
   capacity: 'Мощность',
   staff_capacity: 'Возможности команды',
@@ -229,9 +235,29 @@ export default function BusinessScenarioDialog({
               <dd>{range(proposed.launch_months)}</dd>
             </div>
           </dl>
+          {proposed.cashflow && (
+            <dl>
+              {Object.entries(proposed.cashflow).map(([key, value]) => (
+                <div key={key}>
+                  <dt>{labels[key] || key}</dt>
+                  <dd>{range(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {proposed.investment_schedule && (
+            <p>
+              Этапы инвестиций:{' '}
+              {proposed.investment_schedule
+                .map((s) => `месяц ${s.month}: ${number(s.share * 100)}%`)
+                .join('; ')}
+              .
+            </p>
+          )}
           {proposed.components.map((c) => (
             <section key={c.id} className="business-plan-component">
               <h4>{c.label}</h4>
+              {c.resource_ids?.length > 0 && <p>Общие ресурсы: {c.resource_ids.join(', ')}.</p>}
               <div className="business-parameters">
                 <table>
                   <caption>
@@ -268,6 +294,19 @@ export default function BusinessScenarioDialog({
                 <li key={i}>{a}</li>
               ))}
             </ul>
+          )}
+          {proposed.sources?.length > 0 && (
+            <details>
+              <summary>Источники параметров</summary>
+              <ul>
+                {proposed.sources.map((s, i) => (
+                  <li key={i}>
+                    {s.path}: {s.kind === 'USER' ? 'Сообщение пользователя' : 'Допущение'} —{' '}
+                    {s.evidence}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
           {dialog.plan_metrics?.scenarios?.length > 0 && (
             <p className="data-note">
