@@ -1,24 +1,41 @@
 import React from 'react'
+import { Text } from '@alfalab/core-components-text'
 import { statuses } from '../Ui'
 import { timestamp, show } from './labels'
 
-export function FieldGrid({ items }) {
+export function FieldGrid({ items, alfa = false }) {
   return (
     <dl className="workflow-fields">
       {items.map(([label, value]) => (
         <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value == null || value === '' ? 'Нет сведений' : value}</dd>
+          <dt>{alfa ? <Text view="paragraph-secondary-small">{label}</Text> : label}</dt>
+          <dd>
+            {alfa ? (
+              <Text view="accent-primary-small">
+                {value == null || value === '' ? 'Нет сведений' : value}
+              </Text>
+            ) : value == null || value === '' ? (
+              'Нет сведений'
+            ) : (
+              value
+            )}
+          </dd>
         </div>
       ))}
     </dl>
   )
 }
 
-export function History({ events }) {
+export function History({ events, alfa = false }) {
   return (
     <section className="surface workflow-section">
-      <h2>История заявки</h2>
+      {alfa ? (
+        <Text tag="h2" view="headline-system-small">
+          История заявки
+        </Text>
+      ) : (
+        <h2>История заявки</h2>
+      )}
       {!events?.length ? (
         <p className="muted">Событий пока нет.</p>
       ) : (

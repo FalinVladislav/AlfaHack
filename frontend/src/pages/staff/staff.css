@@ -1,3 +1,162 @@
+.staff-information-card .workflow-card-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.staff-information-card .workflow-section {
+  padding: 28px;
+  border: 1px solid #e7e8ea;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.staff-information-card .workflow-section h2 {
+  margin: 0 0 24px;
+  color: #202022;
+}
+
+.staff-information-card .workflow-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.staff-information-card .workflow-fields > div {
+  padding: 14px 0;
+  border-top: 1px solid #efeff0;
+}
+
+.staff-information-card .workflow-fields dt {
+  margin: 0 0 6px;
+  color: #747477;
+}
+
+.staff-information-card .workflow-fields dd {
+  color: #202022;
+}
+
+.staff-information-card .workflow-metrics {
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.staff-information-card .workflow-metrics > div,
+.staff-information-card .workflow-obligations > div {
+  padding: 16px;
+  border-radius: 16px;
+  background: #f3f4f5;
+  color: #202022;
+}
+
+.staff-information-card .workflow-factors {
+  padding: 20px;
+  border-radius: 16px;
+  background: #f3f4f5;
+}
+
+.staff-information-card .workflow-history li {
+  padding: 18px 0;
+  border-color: #efeff0;
+}
+
+.staff-information-card .workflow-history time,
+.staff-information-card .workflow-history span {
+  color: #747477;
+}
+
+@media (max-width: 1000px) {
+  .staff-information-card .workflow-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .staff-information-card .workflow-section {
+    padding: 20px;
+    border-radius: 20px;
+  }
+  .staff-information-card .workflow-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.workflow-card-header.staff-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 24px;
+  row-gap: 12px;
+}
+
+.staff-card-header .staff-card-meta {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.staff-card-header .staff-card-borrower,
+.staff-card-header .staff-card-assignee {
+  margin: 0;
+}
+
+.staff-card-assignee {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .workflow-card-header.staff-card-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .staff-card-assignee {
+    max-width: none;
+    text-align: left;
+  }
+}
+
+.staff-card-meta {
+  margin: 0 0 12px;
+  color: var(--red);
+}
+
+.workflow-actions.staff-card-actions {
+  position: static;
+  align-items: flex-start;
+  box-shadow: none;
+}
+
+.staff-decision-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.staff-card-actions .staff-claim-button {
+  align-self: stretch;
+  width: 260px;
+  max-width: 100%;
+  min-height: 72px;
+}
+
+.staff-decision-group .workflow-decision-buttons {
+  margin-left: 0;
+}
+
+.staff-decision-hint {
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .staff-decision-group {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 .staff-queue-tabs {
   margin-bottom: 20px;
 }

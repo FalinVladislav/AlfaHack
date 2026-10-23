@@ -1,7 +1,8 @@
+import { ButtonDesktop } from '@alfalab/core-components-button/desktop'
 import { Text } from '@alfalab/core-components-text'
 import React from 'react'
 import { date } from '../../api'
-import { Status, money, productName } from '../../components/Ui'
+import { statuses, money, productName } from '../../components/Ui'
 import { FieldGrid, History } from '../../components/applications/Workflow'
 import {
   riskLabels,
@@ -11,7 +12,6 @@ import {
   recommendations,
   purposeLabels,
   metricLabels,
-  actionLabels,
   show,
   term,
   shortId,
@@ -30,23 +30,18 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
     0,
   )
   return (
-    <article className="workflow-card">
-      <header className="workflow-card-header">
-        <div>
-          <span className="eyebrow">
-            ЗАЯВКА № {shortId(detail.id)} · {date(detail.created_at)}
-          </span>
-          <Text tag="h1" view="headline-system-medium">
-            {show(company.name)}
-          </Text>
-          <Text tag="p" view="paragraph-primary-small">
-            <Status value={detail.status} />
-          </Text>
-        </div>
-        <div className="workflow-header-side">
-          <strong>Ответственный: {show(detail.assigned_to)}</strong>
-          <span>{actionLabels[detail.next_action]}</span>
-        </div>
+    <article className="workflow-card staff-information-card">
+      <header className="workflow-card-header staff-card-header">
+        <Text tag="p" view="accent-primary-small" className="staff-card-meta">
+          ЗАЯВКА № {shortId(detail.id)} · {date(detail.created_at)} ·{' '}
+          {(statuses as Record<string, string>)[detail.status] || detail.status}
+        </Text>
+        <Text tag="h1" view="headline-system-medium" className="staff-card-borrower">
+          Заёмщик: {show(company.name)}
+        </Text>
+        <Text tag="p" view="accent-primary-large" className="staff-card-assignee">
+          Ответственный: {detail.assigned_to || 'Не назначен'}
+        </Text>
       </header>
       <div className="workflow-card-grid">
         <section className="surface workflow-section">
@@ -54,6 +49,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             Запрос клиента
           </Text>
           <FieldGrid
+            alfa
             items={[
               [
                 'Цель',
@@ -76,6 +72,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             Профиль бизнеса
           </Text>
           <FieldGrid
+            alfa
             items={[
               ['Компания', company.name],
               ['Идентификатор', company.company_id],
@@ -119,6 +116,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             </div>
           )}
           <FieldGrid
+            alfa
             items={[
               ['Всего действующий долг', detail.obligations?.length ? money(loanDebt) : null],
               [
@@ -142,6 +140,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
           ) : (
             <>
               <FieldGrid
+                alfa
                 items={[
                   ['Балл', report.adjusted_score == null ? null : report.adjusted_score + ' / 100'],
                   ['Категория риска', riskLabels[detail.risk_category ?? '']],
@@ -202,7 +201,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             </details>
           )}
         </section>
-        <History events={detail.events} />
+        <History events={detail.events} alfa />
       </div>
       {detail.bank_decision && (
         <section className="surface workflow-section">
@@ -210,6 +209,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             Решение сотрудника
           </Text>
           <FieldGrid
+            alfa
             items={[
               ['Тип', decisionLabels[detail.bank_decision.decision_type]],
               ['Сотрудник', detail.bank_decision.staff_key],
@@ -230,6 +230,7 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
             Выданный кредит
           </Text>
           <FieldGrid
+            alfa
             items={[
               ['Номер кредита', detail.loan.id],
               ['Сумма', money(detail.loan.amount)],
@@ -254,52 +255,63 @@ export default function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }
           )}
         </section>
       )}
-      <div className="surface workflow-actions">
+      <div className="surface workflow-actions staff-card-actions">
         {detail.status === 'AWAITING_DECISION' && (
-          <button className="primary" disabled={busy} onClick={onClaim}>
-            Взять в работу
-          </button>
+          <ButtonDesktop
+            size={48}
+            view="accent"
+            className="staff-claim-button"
+            disabled={busy}
+            onClick={onClaim}
+          >
+            <Text view="accent-primary-large">Взять в работу</Text>
+          </ButtonDesktop>
         )}
         {detail.status === 'SCORING_ERROR' && (
-          <button className="secondary" disabled={busy} onClick={onRetry}>
+          <ButtonDesktop size={48} view="secondary" disabled={busy} onClick={onRetry}>
             Повторить оценку
-          </button>
+          </ButtonDesktop>
         )}
         {detail.status === 'IN_REVIEW' && !mine && (
           <Text tag="p" view="paragraph-primary-small">
             Заявка закреплена за другим сотрудником.
           </Text>
         )}
-        <div className="workflow-decision-buttons">
-          <button
-            className="primary"
-            disabled={!canDecide || busy}
-            onClick={() => onMode('APPROVE')}
-          >
-            Одобрить
-          </button>
-          <button
-            className="secondary"
-            disabled={!canDecide || busy}
-            onClick={() => onMode('COUNTEROFFER')}
-          >
-            Предложить другие условия
-          </button>
-          <button
-            className="secondary"
-            disabled={!canDecide || busy}
-            onClick={() => onMode('REJECT')}
-          >
-            Отказать
-          </button>
+        <div className="staff-decision-group">
+          <div className="workflow-decision-buttons">
+            <ButtonDesktop
+              size={48}
+              view="primary"
+              disabled={!canDecide || busy}
+              onClick={() => onMode('APPROVE')}
+            >
+              Одобрить
+            </ButtonDesktop>
+            <ButtonDesktop
+              size={48}
+              view="secondary"
+              disabled={!canDecide || busy}
+              onClick={() => onMode('COUNTEROFFER')}
+            >
+              Предложить другие условия
+            </ButtonDesktop>
+            <ButtonDesktop
+              size={48}
+              view="outlined"
+              disabled={!canDecide || busy}
+              onClick={() => onMode('REJECT')}
+            >
+              Отказать
+            </ButtonDesktop>
+          </div>
+          {!canDecide && (
+            <Text tag="p" view="paragraph-primary-small" className="staff-decision-hint">
+              {detail.status === 'IN_REVIEW'
+                ? 'Дождитесь результата оценки или обратитесь к ответственному сотруднику.'
+                : 'Решение доступно после оценки и взятия заявки в работу.'}
+            </Text>
+          )}
         </div>
-        {!canDecide && (
-          <small>
-            {detail.status === 'IN_REVIEW'
-              ? 'Дождитесь результата оценки или обратитесь к ответственному сотруднику.'
-              : 'Решение доступно после оценки и взятия заявки в работу.'}
-          </small>
-        )}
       </div>
     </article>
   )

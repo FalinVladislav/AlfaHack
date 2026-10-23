@@ -1,3 +1,5 @@
+import { ButtonDesktop } from '@alfalab/core-components-button/desktop'
+import { ArrowLeftMIcon } from '@alfalab/icons-glyph/ArrowLeftMIcon'
 import { Text } from '@alfalab/core-components-text'
 import React, { useEffect, useState } from 'react'
 import { api, post } from '../../api'
@@ -51,18 +53,24 @@ export default function StaffApplications({
         <Text tag="p" view="paragraph-primary-small">
           {detailError}
         </Text>
-        <button className="secondary" onClick={loadDetail}>
+        <ButtonDesktop size={48} view="secondary" onClick={loadDetail}>
           Повторить
-        </button>
+        </ButtonDesktop>
       </div>
     )
   if (!detail) return <Loading />
 
   return (
     <>
-      <button className="text-button workflow-back" onClick={() => onNavigate('applications')}>
-        ← К списку заявок
-      </button>
+      <ButtonDesktop
+        view="secondary"
+        size={40}
+        className="workflow-back"
+        leftAddons={<ArrowLeftMIcon aria-hidden="true" />}
+        onClick={() => onNavigate('applications')}
+      >
+        К списку заявок
+      </ButtonDesktop>
       <StaffCard
         detail={detail}
         me={me}
