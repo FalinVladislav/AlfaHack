@@ -1,277 +1,355 @@
-import React, { useState } from 'react'
-import { Button, Segmented, Select } from 'antd'
-import { date } from '../api'
-import { Icon, Loading, money, monthName } from '../components/Ui'
+import React, { useEffect, useState } from 'react'
+import { api, date } from '../api'
+import { Empty, Loading, money, monthName } from '../components/Ui'
 
+const defaults = { period: '6', from: '', to: '', type: 'ALL', category: '', page: 1 }
+function initial() {
+  const query = new URLSearchParams(location.hash.split('?')[1] || '')
+  const filters = Object.fromEntries(
+    Object.entries(defaults).map(([key, value]) => [
+      key,
+      key === 'page'
+        ? Math.min(1000000, Math.max(1, Number(query.get(key)) || 1))
+        : query.get(key) || value,
+    ]),
+  )
+  if (!['3', '6', '12', 'all', 'custom'].includes(filters.period)) filters.period = '6'
+  if (!['ALL', 'INCOME', 'EXPENSE'].includes(filters.type)) filters.type = 'ALL'
+  return filters
+}
+function periodStart(today, months) {
+  if (!today || months === 'all') return ''
+  const day = new Date(`${today}T12:00:00Z`)
+  day.setUTCDate(1)
+  day.setUTCMonth(day.getUTCMonth() - Number(months))
+  return day.toISOString().slice(0, 10)
+}
 function CashChart({ months }) {
-  const ceiling =
-    Math.max(...months.flatMap((month) => [Number(month.income), Number(month.expenses)]), 1) * 1.15
-  const x = (index) => 68 + (index * 820) / Math.max(months.length - 1, 1)
-  const y = (amount) => 250 - (Number(amount) / ceiling) * 205
-  const path = (field) =>
-    months.map((month, index) => `${index ? 'L' : 'M'}${x(index)},${y(month[field])}`).join(' ')
+  if (!months.length) return <p className="muted">За выбранный период операций нет.</p>
+  const max = Math.max(1, ...months.flatMap((m) => [Number(m.income), Number(m.expenses)]))
+  const x = (i) => 45 + (i * 830) / Math.max(1, months.length - 1)
+  const y = (n) => 210 - (Number(n) / max) * 175
   return (
     <svg
       className="cash-chart"
-      viewBox="0 0 960 300"
+      viewBox="0 0 920 260"
       role="img"
       aria-label="Доходы и расходы по месяцам"
     >
-      <defs>
-        <linearGradient id="income-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop stopColor="#3ec49a" stopOpacity=".18" />
-          <stop offset="1" stopColor="#3ec49a" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0, 1, 2, 3, 4].map((index) => {
-        const amount = (ceiling * index) / 4
-        return (
-          <g key={index}>
-            <line x1="68" x2="905" y1={y(amount)} y2={y(amount)} />
-            <text x="2" y={y(amount) + 5}>
-              {(amount / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} млн
-            </text>
-          </g>
-        )
-      })}
-      <path
-        d={`${path('income')} L${x(months.length - 1)},250 L68,250 Z`}
-        fill="url(#income-fill)"
-      />
-      <path
-        d={path('income')}
-        fill="none"
-        stroke="#00a976"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d={path('expenses')}
-        fill="none"
-        stroke="#ef927b"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-      />
-      {months.map((month, index) => (
-        <g key={month.month}>
-          {['income', 'expenses'].map((field) => (
-            <circle
-              key={field}
-              cx={x(index)}
-              cy={y(month[field])}
-              r="5"
-              fill="white"
-              stroke={field === 'income' ? '#00a976' : '#ef927b'}
-              strokeWidth="3"
-            >
-              <title>
-                {monthName(month.month)}: {money(month[field])}
-              </title>
-            </circle>
-          ))}
-          <text x={x(index)} y="285" textAnchor="middle">
-            {monthName(month.month).slice(0, 3)}
+      {['income', 'expenses'].map((field) => (
+        <polyline
+          key={field}
+          fill="none"
+          stroke={field === 'income' ? '#00a976' : '#ef927b'}
+          strokeWidth="3"
+          points={months.map((m, i) => `${x(i)},${y(m[field])}`).join(' ')}
+        />
+      ))}
+      {months.map((m, i) => (
+        <g key={m.month}>
+          <text x={x(i)} y="245" textAnchor="middle">
+            {monthName(m.month).slice(0, 3)}
           </text>
+          <circle cx={x(i)} cy={y(m.income)} r="4" fill="#00a976">
+            <title>Доходы: {money(m.income)}</title>
+          </circle>
+          <circle cx={x(i)} cy={y(m.expenses)} r="4" fill="#ef927b">
+            <title>Расходы: {money(m.expenses)}</title>
+          </circle>
         </g>
       ))}
     </svg>
   )
 }
-
-export default function Analytics({ focus, finance, dashboard, onFinance, onNavigate }) {
-  const [period, setPeriod] = useState(6)
-  const [transactionType, setTransactionType] = useState('all')
-  if (!finance || !dashboard) return <Loading />
-  const months = finance.months.slice(-period)
-  const latest = finance.months.at(-1) || {}
-  const title =
-    { balance: 'Остаток денег', income: 'Доходы', expenses: 'Расходы', cashflow: 'Денежный поток' }[
-      focus
-    ] || 'Доходы и расходы'
-  const categoryTotals = {}
-  const selectedMonths = new Set(months.map((month) => month.month))
-  const transactions = finance.transactions.filter((transaction) =>
-    selectedMonths.has(transaction.date.slice(0, 7)),
-  )
-  transactions
-    .filter((transaction) => transaction.type === 'EXPENSE')
-    .forEach((transaction) => {
-      categoryTotals[transaction.category] =
-        (categoryTotals[transaction.category] || 0) + Number(transaction.amount)
+export default function Analytics({ dashboard }) {
+  const [filters, setFilters] = useState(initial)
+  const [activity, setActivity] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [revision, setRevision] = useState(0)
+  const today = dashboard?.demo_today || ''
+  const from = filters.period === 'custom' ? filters.from : periodStart(today, filters.period)
+  const to = filters.period === 'custom' ? filters.to : today
+  const change = (values) => setFilters((old) => ({ ...old, ...values, page: 1 }))
+  useEffect(() => {
+    const params = new URLSearchParams(filters)
+    history.replaceState(
+      null,
+      '',
+      `${location.pathname}${location.search}#analytics/cashflow?${params}`,
+    )
+  }, [filters])
+  useEffect(() => {
+    if (!today) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+    const params = new URLSearchParams({
+      from,
+      to,
+      type: filters.type,
+      category: filters.category,
+      page: filters.page,
+      size: 12,
     })
-  const expenseTotal = Object.values(categoryTotals).reduce((total, amount) => total + amount, 0)
-  const visibleTransactions = transactions.filter(
-    (transaction) => transactionType === 'all' || transaction.type === transactionType,
+    api('/finance/activity?' + params, { signal: controller.signal })
+      .then(setActivity)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(cause.message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [today, from, to, filters.type, filters.category, filters.page, revision])
+  const pages = Math.max(1, Math.ceil((activity?.total || 0) / 12))
+  const expenseTotal = (activity?.expense_categories || []).reduce(
+    (n, item) => n + Number(item.amount),
+    0,
   )
   return (
     <section className="analytics">
       <div className="page-heading">
         <div>
-          <h1>{title}</h1>
-        </div>
-        <Segmented
-          aria-label="Период графика"
-          value={period}
-          onChange={setPeriod}
-          options={[
-            { label: '3 месяца', value: 3 },
-            { label: '6 месяцев', value: 6 },
-          ]}
-        />
-      </div>
-      <div className="analytics-stats">
-        <div className="card blue">
-          <span>Остаток денег</span>
-          <strong>{money(finance.company.balance)}</strong>
-        </div>
-        <div className="card mint">
-          <span>Денежный поток</span>
-          <strong className="green">
-            {Number(latest.net) > 0 ? '+' : ''}
-            {money(latest.net)}
-          </strong>
-        </div>
-        <div className="card mint">
-          <span>Доходы · {monthName(latest.month)}</span>
-          <strong>{money(latest.income)}</strong>
-        </div>
-        <div className="card pink">
-          <span>Расходы · {monthName(latest.month)}</span>
-          <strong>{money(latest.expenses)}</strong>
+          <h1>Финансы</h1>
+          <p className="muted">Остаток, доходы, расходы и операции по счёту</p>
         </div>
       </div>
-      <section className="surface chart-box">
-        <div className="section-heading">
-          <h2>Доходы и расходы</h2>
-          <div className="legend">
-            <span>
-              <i />
-              Доходы
-            </span>
-            <span>
-              <i className="expense-dot" />
-              Расходы
-            </span>
-          </div>
+      <div className="surface finance-filters" aria-label="Общие фильтры финансов">
+        <label>
+          Период
+          <select value={filters.period} onChange={(e) => change({ period: e.target.value })}>
+            <option value="3">3 месяца</option>
+            <option value="6">6 месяцев</option>
+            <option value="12">12 месяцев</option>
+            <option value="all">Всё время</option>
+            <option value="custom">Свои даты</option>
+          </select>
+        </label>
+        {filters.period === 'custom' && (
+          <>
+            <label>
+              С
+              <input
+                type="date"
+                value={filters.from}
+                onChange={(e) => change({ from: e.target.value })}
+              />
+            </label>
+            <label>
+              По
+              <input
+                type="date"
+                value={filters.to}
+                onChange={(e) => change({ to: e.target.value })}
+              />
+            </label>
+          </>
+        )}
+        <label>
+          Операции
+          <select
+            value={filters.type}
+            onChange={(e) => change({ type: e.target.value, category: '' })}
+          >
+            <option value="ALL">Все</option>
+            <option value="INCOME">Поступления</option>
+            <option value="EXPENSE">Расходы</option>
+          </select>
+        </label>
+        <label>
+          Категория расходов
+          <select
+            value={filters.category}
+            disabled={filters.type === 'INCOME'}
+            onChange={(e) =>
+              change({ category: e.target.value, type: e.target.value ? 'EXPENSE' : filters.type })
+            }
+          >
+            <option value="">Все категории</option>
+            {(activity?.available_categories || []).map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="text-button" onClick={() => setFilters(defaults)}>
+          Сбросить
+        </button>
+      </div>
+      {error && (
+        <div className="surface workflow-error" role="alert">
+          <p>{error}</p>
+          <button className="secondary" onClick={() => setRevision((n) => n + 1)}>
+            Повторить
+          </button>
         </div>
-        <CashChart months={months} />
-        <p className="data-note">
-          Данные за {months.length} завершённых месяцев. Денежный поток — разница поступлений и
-          расходов.
+      )}
+      {loading && activity && (
+        <p className="muted" role="status">
+          Обновляем финансовые данные…
         </p>
-      </section>
-      <div className="analytics-bottom">
-        <section className="surface">
-          <h2>Структура расходов</h2>
-          {Object.entries(categoryTotals).map(([category, amount]) => (
-            <div className="expense-item" key={category}>
-              <div>
-                <span>{category}</span>
-                <strong>{money(amount)}</strong>
+      )}
+      {loading && !activity ? (
+        <Loading />
+      ) : (
+        activity && (
+          <>
+            <div className="analytics-stats">
+              <div className="card blue">
+                <span>
+                  Остаток на {activity.balance_date ? date(activity.balance_date) : 'конец периода'}
+                </span>
+                <strong>
+                  {activity.balance == null ? 'Нет сведений' : money(activity.balance)}
+                </strong>
               </div>
-              <div className="expense-track">
-                <i style={{ width: `${expenseTotal ? (amount / expenseTotal) * 100 : 0}%` }} />
+              <div className="card mint">
+                <span>Доходы за период</span>
+                <strong>{money(activity.income)}</strong>
+              </div>
+              <div className="card pink">
+                <span>Расходы за период</span>
+                <strong>{money(activity.expenses)}</strong>
+              </div>
+              <div className="card mint">
+                <span>Денежный поток за период</span>
+                <strong>{money(activity.net)}</strong>
               </div>
             </div>
-          ))}
-        </section>
-        <section className="surface forecast-summary">
-          <span className="eyebrow">ПЛАН НА 30 ДНЕЙ</span>
-          <h2>
-            {Number(dashboard.forecast.gap_amount) > 0
-              ? 'Возможен кассовый разрыв'
-              : 'Плановые платежи под контролем'}
-          </h2>
-          <strong className={Number(dashboard.forecast.minimum_balance) < 0 ? 'orange' : 'green'}>
-            {money(dashboard.forecast.minimum_balance)}
-          </strong>
-          <p>
-            Минимальный плановый остаток
-            {dashboard.forecast.minimum_date ? ` · ${date(dashboard.forecast.minimum_date)}` : ''}.
-          </p>
-          <Button type="link" onClick={onFinance}>
-            Рассмотреть финансирование
-            <Icon name="arrow" size={18} />
-          </Button>
-          <Button type="link" onClick={() => onNavigate('loans')}>
-            Посмотреть кредитные платежи
-            <Icon name="arrow" size={18} />
-          </Button>
-        </section>
-      </div>
-      {focus === 'balance' && (
-        <section className="surface">
-          <h2>Последние остатки по дням</h2>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Остаток на конец дня</th>
-                </tr>
-              </thead>
-              <tbody>
-                {finance.balances
-                  .slice(-7)
-                  .reverse()
-                  .map((balance) => (
-                    <tr key={balance.date}>
-                      <td>{date(balance.date)}</td>
-                      <td className="numeric">{money(balance.balance)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+            <p className="data-note">
+              Общие фильтры действуют для итогов, графика, структуры расходов и истории. Остаток
+              показан на конец периода.
+            </p>
+            <section className="surface chart-box">
+              <div className="section-heading">
+                <h2>Денежный поток</h2>
+                <div className="legend">
+                  <span>
+                    <i />
+                    Доходы
+                  </span>
+                  <span>
+                    <i className="expense-dot" />
+                    Расходы
+                  </span>
+                </div>
+              </div>
+              <CashChart months={activity.months} />
+            </section>
+            <div className="analytics-bottom">
+              <section className="surface">
+                <h2>Структура расходов</h2>
+                {!activity.expense_categories.length ? (
+                  <p className="muted">В выбранных операциях расходов нет.</p>
+                ) : (
+                  activity.expense_categories.map((item) => (
+                    <button
+                      className="expense-item finance-category"
+                      key={item.category}
+                      onClick={() => change({ type: 'EXPENSE', category: item.category })}
+                    >
+                      <span>
+                        <span>{item.category}</span>
+                        <strong>{money(item.amount)}</strong>
+                      </span>
+                      <span className="expense-track">
+                        <i
+                          style={{
+                            width: `${expenseTotal ? (Number(item.amount) / expenseTotal) * 100 : 0}%`,
+                          }}
+                        />
+                      </span>
+                    </button>
+                  ))
+                )}
+              </section>
+              <section className="surface">
+                <h2>Остаток по дням</h2>
+                {!activity.balances.length ? (
+                  <p className="muted">За этот период сведений нет.</p>
+                ) : (
+                  <div className="table-scroll">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Дата</th>
+                          <th>Остаток</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activity.balances.map((item) => (
+                          <tr key={item.date}>
+                            <td>{date(item.date)}</td>
+                            <td className="numeric">{money(item.balance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
+            <section className="surface operations">
+              <div className="section-heading">
+                <h2>История операций</h2>
+                <strong>Найдено: {activity.total}</strong>
+              </div>
+              {!activity.total ? (
+                <Empty title="Операции не найдены">
+                  Измените фильтры, чтобы увидеть другие операции.
+                </Empty>
+              ) : (
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Операция</th>
+                        <th>Контрагент</th>
+                        <th>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activity.items.map((item) => (
+                        <tr key={item.id}>
+                          <td>{date(item.date)}</td>
+                          <td>{item.category}</td>
+                          <td className="muted">{item.counterparty_id}</td>
+                          <td className={`numeric ${item.type === 'INCOME' ? 'green' : ''}`}>
+                            {item.type === 'INCOME' ? '+' : '−'}
+                            {money(item.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {pages > 1 && (
+                <nav className="workflow-pagination" aria-label="Страницы операций">
+                  <button
+                    disabled={filters.page <= 1 || loading}
+                    onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
+                  >
+                    Назад
+                  </button>
+                  <span>
+                    {filters.page} / {pages}
+                  </span>
+                  <button
+                    disabled={filters.page >= pages || loading}
+                    onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
+                  >
+                    Далее
+                  </button>
+                </nav>
+              )}
+            </section>
+          </>
+        )
       )}
-      <section className="surface operations">
-        <div className="section-heading">
-          <h2>История операций</h2>
-          <label className="sr-only" htmlFor="operation-filter">
-            Тип операций
-          </label>
-          <Select
-            id="operation-filter"
-            value={transactionType}
-            onChange={setTransactionType}
-            options={[
-              { value: 'all', label: 'Все операции' },
-              { value: 'INCOME', label: 'Поступления' },
-              { value: 'EXPENSE', label: 'Расходы' },
-            ]}
-          />
-        </div>
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Операция</th>
-                <th>Контрагент</th>
-                <th>Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleTransactions.slice(0, 12).map((transaction) => (
-                <tr key={transaction.id}>
-                  <td>{date(transaction.date)}</td>
-                  <td>{transaction.category}</td>
-                  <td className="muted">{transaction.counterparty_id}</td>
-                  <td className={`numeric ${transaction.type === 'INCOME' ? 'green' : ''}`}>
-                    {transaction.type === 'INCOME' ? '+' : '−'}
-                    {money(transaction.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="data-note">
-          Последние {Math.min(12, visibleTransactions.length)} из {visibleTransactions.length}{' '}
-          операций за выбранный период. Все компании, контрагенты и операции вымышлены.
-        </p>
-      </section>
     </section>
   )
 }

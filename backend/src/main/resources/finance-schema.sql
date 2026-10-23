@@ -52,6 +52,28 @@ CREATE TABLE IF NOT EXISTS loan_requests (
 );
 CREATE INDEX IF NOT EXISTS transactions_company_date ON transactions(company_id, date);
 CREATE INDEX IF NOT EXISTS existing_loans_company ON existing_loans(company_id);
+CREATE TABLE IF NOT EXISTS loan_names (
+    company_id VARCHAR(32) NOT NULL REFERENCES companies(id),
+    source VARCHAR(16) NOT NULL, loan_id VARCHAR(80) NOT NULL,
+    display_name VARCHAR(100) NOT NULL, updated_at TIMESTAMP NOT NULL,
+    PRIMARY KEY(company_id,source,loan_id)
+);
+CREATE TABLE IF NOT EXISTS loan_payments (
+    id VARCHAR(36) PRIMARY KEY,
+    company_id VARCHAR(32) NOT NULL REFERENCES companies(id),
+    account_key VARCHAR(32) NOT NULL,
+    request_key VARCHAR(120) NOT NULL,
+    source VARCHAR(16) NOT NULL, loan_id VARCHAR(80) NOT NULL,
+    due_date DATE NOT NULL, payment DECIMAL(18,2) NOT NULL,
+    principal DECIMAL(18,2) NOT NULL, interest DECIMAL(18,2) NOT NULL,
+    paid_at TIMESTAMP NOT NULL,
+    UNIQUE(account_key,request_key), UNIQUE(source,loan_id,due_date)
+);
+ALTER TABLE loan_schedule ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
+INSERT INTO transactions(id,company_id,date,amount,type,category,counterparty_id)
+SELECT e.id,e.company_id,e.event_date,e.amount,'INCOME','Выдача кредита','Банк'
+FROM ledger_events e WHERE e.kind='DISBURSEMENT'
+AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.id=e.id);
 
 CREATE TABLE IF NOT EXISTS business_scenario_dialogs (
     id VARCHAR(36) PRIMARY KEY,

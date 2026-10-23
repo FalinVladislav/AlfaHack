@@ -46,7 +46,7 @@ export default function Dashboard({
         <Button
           type="text"
           className="card top-card blue"
-          onClick={() => onNavigate('analytics/balance')}
+          onClick={() => onNavigate('analytics/cashflow')}
         >
           <h2>Остаток денег</h2>
           <div>
@@ -102,7 +102,7 @@ export default function Dashboard({
         <Button
           type="text"
           className="card bottom-card mint"
-          onClick={() => onNavigate('analytics/income')}
+          onClick={() => onNavigate('analytics/cashflow')}
         >
           <h2>Доходы</h2>
           <div>
@@ -113,7 +113,7 @@ export default function Dashboard({
         <Button
           type="text"
           className="card bottom-card pink"
-          onClick={() => onNavigate('analytics/expenses')}
+          onClick={() => onNavigate('analytics/cashflow')}
         >
           <h2>Расходы</h2>
           <div>

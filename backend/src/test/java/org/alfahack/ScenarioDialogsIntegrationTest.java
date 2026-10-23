@@ -50,7 +50,7 @@ class ScenarioDialogsIntegrationTest {
         var tools = org.alfahack.features.scenarios.application.ScenarioTools.definitions();
         for (var tool : tools)
             checkStrict(tool);
-        java.nio.file.Files.writeString(java.nio.file.Path.of("../target/scenario-model-fixture.json"),
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/scenario-model-fixture.json"),
             json.write(Map.of(
                 "tools", tools, "plan", BusinessPlanTest.plan(), "instructions",
                 org.alfahack.features.scenarios.application.ScenarioTools.INSTRUCTIONS)));

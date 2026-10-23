@@ -7,6 +7,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import org.alfahack.core.domain.Util;
 import org.alfahack.features.applications.port.ApplicationsRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -36,6 +38,105 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     public List<Map<String, Object>> listAll() {
         return rows(db.queryForList(
             "SELECT a.id,a.company_id,c.name AS company_name,a.status,a.amount,a.product_id,a.created_at,a.assigned_to,a.score,a.term_months,a.duration_days,r.amount AS requested_amount,r.term_months AS requested_term_months,r.duration_days AS requested_duration_days FROM applications a JOIN companies c ON c.id=a.company_id LEFT JOIN application_requests r ON r.application_id=a.id ORDER BY a.created_at DESC"));
+    }
+
+    @Override
+    public int scoringSummary(
+        String id,
+        String outcome,
+        String risk
+    ) {
+        return db.update("UPDATE applications SET score_outcome=?,risk_category=? WHERE id=?", outcome, risk, id);
+    }
+
+    @Override
+    public List<String> expiringOffers() {
+        return db.queryForList(
+            "SELECT a.id FROM applications a JOIN bank_decisions d ON d.application_id=a.id JOIN application_offers o ON o.id=d.offer_id WHERE a.status IN ('APPROVED','COUNTEROFFER') AND o.expires_at<=CURRENT_TIMESTAMP",
+            String.class);
+    }
+
+    @Override
+    public Map<String, Object> pageStaff(
+        String staffKey,
+        String tab,
+        String query,
+        String status,
+        String risk,
+        String assignee,
+        int page,
+        int size
+    ) {
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        List<Object> args = new ArrayList<>();
+        switch (tab) {
+            case "waiting" -> where.append(" AND a.status='AWAITING_DECISION'");
+            case "mine" -> {
+                where.append(" AND a.status='IN_REVIEW' AND a.assigned_to=?");
+                args.add(staffKey);
+            }
+            case "decided" -> where.append(
+                " AND a.status IN ('APPROVED','COUNTEROFFER','REJECTED','OFFER_ACCEPTED','CLOSED','EXPIRED','SIGNED')");
+            case "issued" -> where.append(" AND a.status='DISBURSED'");
+            default -> {
+            }
+        }
+        if (query != null && !query.isBlank()) {
+            where.append(" AND (POSITION(? IN LOWER(a.id))>0 OR POSITION(? IN LOWER(c.name))>0)");
+            args.add(query.trim().toLowerCase());
+            args.add(query.trim().toLowerCase());
+        }
+        if (status != null && !status.isBlank()) {
+            where.append(" AND a.status=?");
+            args.add(status);
+        }
+        if (risk != null && !risk.isBlank()) {
+            where.append(" AND a.risk_category=?");
+            args.add(risk);
+        }
+        if (assignee != null && !assignee.isBlank()) {
+            if ("unassigned".equals(assignee))
+                where.append(" AND a.assigned_to IS NULL");
+            else {
+                where.append(" AND a.assigned_to=?");
+                args.add(assignee);
+            }
+        }
+        String from = " FROM applications a JOIN companies c ON c.id=a.company_id LEFT JOIN application_requests r ON r.application_id=a.id";
+        long total = db.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(size);
+        pageArgs.add((long) (page - 1) * size);
+        var items = rows(db.queryForList(
+            "SELECT a.id,a.company_id,c.name AS company_name,a.status,a.amount,a.product_id,a.created_at,a.assigned_to,a.score,a.score_outcome AS recommendation,a.risk_category,a.term_months,a.duration_days,r.amount AS requested_amount,r.term_months AS requested_term_months,r.duration_days AS requested_duration_days"
+                + from + where + " ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?",
+            pageArgs.toArray()));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("items", items);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("size", size);
+        result.put("counts", Map.of(
+            "waiting", countStatus("a.status='AWAITING_DECISION'"),
+            "mine",
+            db.queryForObject("SELECT COUNT(*) FROM applications a WHERE a.status='IN_REVIEW' AND a.assigned_to=?",
+                Long.class, staffKey),
+            "decided",
+            countStatus(
+                "a.status IN ('APPROVED','COUNTEROFFER','REJECTED','OFFER_ACCEPTED','CLOSED','EXPIRED','SIGNED')"),
+            "issued", countStatus("a.status='DISBURSED'"),
+            "history", countStatus("1=1")));
+        result.put("statuses",
+            db.queryForList("SELECT DISTINCT status FROM applications ORDER BY status", String.class));
+        result.put("assignees",
+            db.queryForList(
+                "SELECT DISTINCT assigned_to FROM applications WHERE assigned_to IS NOT NULL ORDER BY assigned_to",
+                String.class));
+        return result;
+    }
+
+    private long countStatus(String predicate) {
+        return db.queryForObject("SELECT COUNT(*) FROM applications a WHERE " + predicate, Long.class);
     }
 
     @Override
@@ -293,6 +394,21 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
         String companyId
     ) {
         return db.update("UPDATE companies SET balance=balance+? WHERE id=?", amount, companyId);
+    }
+
+    @Override
+    public void recordDisbursement(
+        String eventId,
+        String companyId,
+        LocalDate date,
+        BigDecimal amount
+    ) {
+        db.update(
+            "INSERT INTO transactions(id,company_id,date,amount,type,category,counterparty_id) VALUES (?,?,?,?,?,?,?)",
+            eventId, companyId, date, amount, "INCOME", "Выдача кредита", "Банк");
+        BigDecimal balance = db.queryForObject("SELECT balance FROM companies WHERE id=?", BigDecimal.class, companyId);
+        if (db.update("UPDATE balances SET balance=? WHERE company_id=? AND date=?", balance, companyId, date) == 0)
+            db.update("INSERT INTO balances(company_id,date,balance) VALUES (?,?,?)", companyId, date, balance);
     }
 
     @Override
@@ -580,7 +696,9 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
         BigDecimal interest,
         BigDecimal payment
     ) {
-        return db.update("INSERT INTO loan_schedule VALUES (?,?,?,?,?,?)", loanId, installment, dueDate, principal,
+        return db.update(
+            "INSERT INTO loan_schedule(loan_id,installment,due_date,principal,interest,payment) VALUES (?,?,?,?,?,?)",
+            loanId, installment, dueDate, principal,
             interest, payment);
     }
 

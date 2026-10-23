@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api, post, date } from '../api'
 import { Empty, Loading, Status, money, percent, productName, statuses } from '../components/Ui'
 
@@ -77,9 +77,6 @@ export default function Applications({
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
-  const [rows, setRows] = useState([])
-  const [listError, setListError] = useState('')
-  const [listLoading, setListLoading] = useState(false)
   const [mode, setMode] = useState('')
   const [contractOpen, setContractOpen] = useState(false)
   const [signConfirm, setSignConfirm] = useState(false)
@@ -108,25 +105,6 @@ export default function Applications({
   useEffect(() => {
     if (id) loadDetail()
   }, [id, revision, staff])
-  useEffect(() => {
-    if (!staff || id) return
-    let alive = true
-    setListLoading(true)
-    setListError('')
-    api('/staff/applications')
-      .then((data) => {
-        if (alive) setRows(data)
-      })
-      .catch((error) => {
-        if (alive) setListError(error.message)
-      })
-      .finally(() => {
-        if (alive) setListLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [staff, id, revision])
   useEffect(() => {
     if (staff || !id || !detail) return
     let alive = true
@@ -174,21 +152,7 @@ export default function Applications({
 
   if (!id) {
     return staff ? (
-      <StaffQueue
-        rows={rows}
-        loading={listLoading}
-        error={listError}
-        retry={() => {
-          setListLoading(true)
-          api('/staff/applications')
-            .then(setRows)
-            .catch((e) => setListError(e.message))
-            .finally(() => setListLoading(false))
-        }}
-        me={me}
-        onNavigate={onNavigate}
-        run={run}
-      />
+      <StaffQueue revision={revision} me={me} onNavigate={onNavigate} run={run} />
     ) : (
       <ClientList rows={applications} onNavigate={onNavigate} onFinance={onFinance} />
     )
@@ -339,13 +303,55 @@ function ClientList({ rows, onNavigate, onFinance }) {
   )
 }
 
-function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
+function StaffQueue({ revision, me, onNavigate }) {
   const [tab, setTab] = useState('waiting')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [risk, setRisk] = useState('')
   const [assignee, setAssignee] = useState('')
   const [page, setPage] = useState(1)
+  const [reload, setReload] = useState(0)
+  const [result, setResult] = useState({
+    items: [],
+    total: 0,
+    counts: {},
+    statuses: [],
+    assignees: [],
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const retry = () => setReload((value) => value + 1)
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = setTimeout(
+      () => {
+        setLoading(true)
+        setError('')
+        const params = new URLSearchParams({
+          tab,
+          query,
+          status,
+          risk,
+          assignee,
+          page: String(page),
+          size: '8',
+        })
+        api('/staff/applications/page?' + params, { signal: controller.signal })
+          .then(setResult)
+          .catch((cause) => {
+            if (!controller.signal.aborted) setError(cause.message)
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) setLoading(false)
+          })
+      },
+      query ? 200 : 0,
+    )
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [tab, query, status, risk, assignee, page, revision, reload])
   const tabs = [
     ['waiting', 'Ожидают решения'],
     ['mine', 'В моей работе'],
@@ -353,34 +359,9 @@ function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
     ['issued', 'Выданы'],
     ['history', 'История'],
   ]
-  const filtered = useMemo(
-    () =>
-      rows.filter((row) => {
-        const inTab =
-          tab === 'waiting'
-            ? waiting.includes(row.status)
-            : tab === 'mine'
-              ? row.status === 'IN_REVIEW' && row.assigned_to === me.account_key
-              : tab === 'decided'
-                ? decided.includes(row.status)
-                : tab === 'issued'
-                  ? row.status === 'DISBURSED'
-                  : true
-        if (!inTab) return false
-        const text = (row.id + ' ' + (row.company_name || '')).toLowerCase()
-        return (
-          (!query || text.includes(query.trim().toLowerCase())) &&
-          (!status || row.status === status) &&
-          (!risk || row.risk_category === risk) &&
-          (!assignee ||
-            (assignee === 'unassigned' ? !row.assigned_to : row.assigned_to === assignee))
-        )
-      }),
-    [rows, tab, query, status, risk, assignee, me.account_key],
-  )
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 8))
-  const visible = filtered.slice((Math.min(page, pageCount) - 1) * 8, Math.min(page, pageCount) * 8)
-  const staffKeys = [...new Set(rows.map((row) => row.assigned_to).filter(Boolean))]
+  const pageCount = Math.max(1, Math.ceil(result.total / 8))
+  const visible = result.items
+  const staffKeys = result.assignees
   const resetPage = (setter) => (value) => {
     setter(value)
     setPage(1)
@@ -409,21 +390,7 @@ function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
             }}
           >
             {label}
-            <span>
-              {
-                rows.filter((row) =>
-                  key === 'waiting'
-                    ? row.status === 'AWAITING_DECISION'
-                    : key === 'mine'
-                      ? row.status === 'IN_REVIEW' && row.assigned_to === me.account_key
-                      : key === 'decided'
-                        ? decided.includes(row.status)
-                        : key === 'issued'
-                          ? row.status === 'DISBURSED'
-                          : true,
-                ).length
-              }
-            </span>
+            <span>{result.counts[key] || 0}</span>
           </button>
         ))}
       </div>
@@ -440,7 +407,7 @@ function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
           Статус
           <select value={status} onChange={(e) => resetPage(setStatus)(e.target.value)}>
             <option value="">Все статусы</option>
-            {[...new Set(rows.map((row) => row.status))].map((value) => (
+            {result.statuses.map((value) => (
               <option key={value} value={value}>
                 {statuses[value] || value}
               </option>
@@ -484,7 +451,7 @@ function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
         </button>
       </div>
       <div className="workflow-result-bar">
-        <strong>Найдено: {filtered.length}</strong>
+        <strong>Найдено: {result.total}</strong>
         <button className="text-button" onClick={retry}>
           Обновить список
         </button>
@@ -498,9 +465,9 @@ function StaffQueue({ rows, loading, error, retry, me, onNavigate }) {
             Повторить
           </button>
         </div>
-      ) : !rows.length ? (
+      ) : !result.counts.history ? (
         <Empty title="Заявок пока нет">Новые заявки появятся здесь после отправки клиентом.</Empty>
-      ) : !filtered.length ? (
+      ) : !result.total ? (
         <Empty title="Ничего не найдено">Измените поиск или сбросьте фильтры.</Empty>
       ) : (
         <div className="surface workflow-table-wrap">

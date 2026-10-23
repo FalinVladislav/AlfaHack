@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -195,6 +196,21 @@ public class ApplicationsController {
         User u = user(request);
         u.staff();
         return apps.list(u);
+    }
+
+    @GetMapping("/staff/applications/page")
+    public Map<String, Object> staffApplicationsPage(
+        HttpServletRequest request,
+        @RequestParam(defaultValue = "waiting") String tab,
+        @RequestParam(defaultValue = "") String query,
+        @RequestParam(defaultValue = "") String status,
+        @RequestParam(defaultValue = "") String risk,
+        @RequestParam(defaultValue = "") String assignee,
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "8") int size
+    ) {
+        return apps.pageStaff(user(request), tab, query, status, risk, assignee,
+            Math.max(1, page), Math.max(1, Math.min(50, size)));
     }
 
     @GetMapping("/staff/applications/{id}")

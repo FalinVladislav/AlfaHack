@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS assistant_proposals (id VARCHAR(36) PRIMARY KEY, comp
 CREATE TABLE IF NOT EXISTS scoring_reports (application_id VARCHAR(36) PRIMARY KEY, report_json TEXT NOT NULL);
 -- Application workflow v2. Submitted requests remain immutable; bank terms live in offers.
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(32);
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS score_outcome VARCHAR(32);
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS risk_category VARCHAR(16);
 ALTER TABLE scoring_reports ADD COLUMN IF NOT EXISTS assessed_at TIMESTAMP;
 CREATE TABLE IF NOT EXISTS scoring_runs (
     id VARCHAR(36) PRIMARY KEY, application_id VARCHAR(36) NOT NULL REFERENCES applications(id),
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS loan_schedule (
     PRIMARY KEY(loan_id,installment)
 );
 CREATE INDEX IF NOT EXISTS applications_queue ON applications(status,assigned_to,created_at);
+CREATE INDEX IF NOT EXISTS applications_queue_filter ON applications(status,risk_category,assigned_to,created_at);
 CREATE INDEX IF NOT EXISTS application_notifications_company ON application_notifications(company_id,created_at);
 INSERT INTO application_requests(application_id,purpose,goal_text,product_id,amount,term_months,duration_days,needed_by,annual_rate,monthly_payment,total_repay,submitted_at)
 SELECT a.id,d.purpose,d.goal_text,q.product_id,q.amount,q.term_months,q.duration_days,d.needed_by,q.annual_rate,q.monthly_payment,q.total_repay,a.created_at
@@ -92,6 +95,22 @@ WHERE NOT EXISTS (SELECT 1 FROM application_requests r WHERE r.application_id=a.
 UPDATE applications SET status='AWAITING_DECISION',reason_code=NULL
 WHERE status IN ('APPROVED','COUNTEROFFER','REJECTED')
 AND NOT EXISTS (SELECT 1 FROM bank_decisions b WHERE b.application_id=applications.id);
+UPDATE applications SET score_outcome=CASE
+    WHEN (SELECT s.report_json FROM scoring_reports s WHERE s.application_id=applications.id) LIKE '%"outcome":"APPROVED"%' THEN 'APPROVED'
+    WHEN (SELECT s.report_json FROM scoring_reports s WHERE s.application_id=applications.id) LIKE '%"outcome":"CONDITIONAL"%' THEN 'CONDITIONAL'
+    WHEN (SELECT s.report_json FROM scoring_reports s WHERE s.application_id=applications.id) LIKE '%"outcome":"REJECTED"%' THEN 'REJECTED'
+    WHEN (SELECT s.report_json FROM scoring_reports s WHERE s.application_id=applications.id) LIKE '%"outcome":"SOURCE_ERROR"%' THEN 'SOURCE_ERROR'
+    WHEN (SELECT s.report_json FROM scoring_reports s WHERE s.application_id=applications.id) LIKE '%"outcome":"INSUFFICIENT_DATA"%' THEN 'INSUFFICIENT_DATA'
+    ELSE NULL END
+WHERE applications.score_outcome IS NULL AND EXISTS (SELECT 1 FROM scoring_reports s WHERE s.application_id=applications.id);
+UPDATE applications SET risk_category=CASE
+    WHEN score_outcome='REJECTED' THEN 'HIGH'
+    WHEN score_outcome IN ('SOURCE_ERROR','INSUFFICIENT_DATA') THEN NULL
+    WHEN score >= 75 THEN 'LOW'
+    WHEN score >= 45 THEN 'MEDIUM'
+    WHEN score IS NOT NULL THEN 'HIGH'
+    ELSE NULL END WHERE risk_category IS NULL;
+UPDATE applications SET risk_category=NULL WHERE score_outcome IN ('SOURCE_ERROR','INSUFFICIENT_DATA');
 CREATE TABLE IF NOT EXISTS insight_jobs (id VARCHAR(36) PRIMARY KEY, company_id VARCHAR(32) NOT NULL, fingerprint VARCHAR(64) NOT NULL, context_json TEXT NOT NULL, status VARCHAR(24) NOT NULL, message VARCHAR(500) NOT NULL, lease_token VARCHAR(36), created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, UNIQUE(company_id,fingerprint));
 CREATE TABLE IF NOT EXISTS business_hypotheses (id VARCHAR(36) PRIMARY KEY, company_id VARCHAR(32) NOT NULL, job_id VARCHAR(36) NOT NULL REFERENCES insight_jobs(id), source_key VARCHAR(100) NOT NULL, payload_json TEXT NOT NULL, created_at TIMESTAMP NOT NULL, UNIQUE(job_id,source_key));
 CREATE TABLE IF NOT EXISTS insight_reads (account_key VARCHAR(32) NOT NULL, hypothesis_id VARCHAR(36) NOT NULL REFERENCES business_hypotheses(id), read_at TIMESTAMP NOT NULL, PRIMARY KEY(account_key,hypothesis_id));

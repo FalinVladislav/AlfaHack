@@ -8,6 +8,7 @@ import org.alfahack.core.config.SyntheticFinanceData;
 import org.alfahack.core.domain.User;
 import org.alfahack.core.errors.DomainException;
 import org.alfahack.features.finance.port.FinanceUseCases;
+import org.alfahack.features.finance.port.CreditAccountUseCases;
 import org.alfahack.features.drafts.port.DraftUseCases;
 import org.alfahack.features.applications.port.ApplicationUseCases;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,8 @@ class FinanceIntegrationTest {
 
     @Autowired
     FinanceUseCases finance;
+    @Autowired
+    CreditAccountUseCases creditAccounts;
     @Autowired
     SyntheticFinanceData seed;
     @Autowired
@@ -70,6 +73,15 @@ class FinanceIntegrationTest {
         var issued = loans.stream().filter(loan -> "ISSUED".equals(loan.get("source"))).findFirst().orElseThrow();
         assertEquals(LocalDate.of(2028, 10, 21), issued.get("end_date"));
         assertEquals(LocalDate.of(2026, 11, 21), issued.get("next_payment_date"));
+        var payment = creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"), "issued-first-payment",
+            issued.get("next_payment_date").toString());
+        assertEquals(payment.get("id"), creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"),
+            "issued-first-payment", issued.get("next_payment_date").toString()).get("id"));
+        assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM loan_schedule WHERE loan_id=? AND paid_at IS NOT NULL",
+            Integer.class, issued.get("id")));
+        assertEquals(LocalDate.of(2026, 12, 21), finance.loans(stable).stream()
+            .filter(loan -> issued.get("id").equals(loan.get("id"))).findFirst().orElseThrow()
+            .get("next_payment_date"));
     }
     private final User stable = new User("stable", "CLIENT", "STABLE", "test");
 
@@ -136,6 +148,75 @@ class FinanceIntegrationTest {
         seed.run();
         assertEquals(transactions, db.queryForObject("SELECT COUNT(*) FROM transactions", Integer.class));
         assertEquals(loans, db.queryForObject("SELECT COUNT(*) FROM existing_loans", Integer.class));
+    }
+
+    @Test
+    @Transactional
+    void filteredOperationPagesAndTotalsUseTheSameSelection() {
+        var summary = finance.summary(stable);
+        assertEquals(finance.overview(stable).get("months"), summary.get("months"));
+        assertFalse(summary.containsKey("transactions"));
+        var first = finance.activity(stable, "", "", "ALL", "", 1, 7);
+        var last = finance.activity(stable, "", "", "ALL", "", 5, 7);
+        assertEquals(30L, first.get("total"));
+        assertEquals(7, list(first, "items").size());
+        assertEquals(2, list(last, "items").size());
+        var expense = finance.activity(stable, "", "", "EXPENSE", "", 1, 50);
+        assertEquals(0, ((BigDecimal) expense.get("income")).signum());
+        assertEquals(expense.get("total"), (long) list(expense, "items").size());
+        assertThrows(DomainException.class,
+            () -> finance.activity(stable, "2026-10-22", "2026-10-21", "ALL", "", 1, 10));
+    }
+
+    @Test
+    @Transactional
+    void customNameAndSimulatedPaymentAreOwnedPersistentAndIdempotent() {
+        var before = creditAccounts.load(stable, "", "ALL", "", "", 1, 1, 8);
+        var loan = list((Map<String, Object>) before.get("loans"), "items").getFirst();
+        String source = (String) loan.get("source"), id = (String) loan.get("id");
+        creditAccounts.rename(stable, source, id, "Оборотный капитал");
+        var refreshed = creditAccounts.load(stable, "Оборотный капитал", "ALL", "", "", 1, 1, 8);
+        assertEquals(1L, ((Map<?, ?>) refreshed.get("loans")).get("total"));
+        var other = new User("gap", "CLIENT", "GAP", "test");
+        assertEquals(DomainException.Kind.NOT_FOUND, assertThrows(DomainException.class,
+            () -> creditAccounts.rename(other, source, id, "Чужой кредит")).kind);
+        assertEquals(DomainException.Kind.NOT_FOUND, assertThrows(DomainException.class,
+            () -> creditAccounts.pay(other, source, id, "other-key", loan.get("next_payment_date").toString())).kind);
+        BigDecimal balance = db.queryForObject("SELECT balance FROM companies WHERE id='STABLE'", BigDecimal.class);
+        var paid = creditAccounts.pay(stable, source, id, "finance-pay-once", loan.get("next_payment_date").toString());
+        var again = creditAccounts.pay(stable, source, id, "finance-pay-once",
+            loan.get("next_payment_date").toString());
+        assertEquals(paid.get("id"), again.get("id"));
+        assertEquals(1,
+            db.queryForObject("SELECT COUNT(*) FROM loan_payments WHERE id=?", Integer.class, paid.get("id")));
+        assertEquals(0, balance.subtract((BigDecimal) paid.get("payment"))
+            .compareTo(db.queryForObject("SELECT balance FROM companies WHERE id='STABLE'", BigDecimal.class)));
+        assertEquals(1,
+            db.queryForObject("SELECT COUNT(*) FROM transactions WHERE id=?", Integer.class, paid.get("id")));
+    }
+
+    @Test
+    @Transactional
+    void staffQueuePagesAndFiltersAreAppliedBeforeRowsAreReturned() {
+        for (int index = 0; index < 11; index++) {
+            String id = java.util.UUID.randomUUID().toString();
+            db.update(
+                "INSERT INTO applications(id,company_id,draft_id,quote_id,status,amount,term_months,product_id,annual_rate,monthly_payment,total_repay,score,offer_version,version,created_at,updated_at,score_outcome,risk_category) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, "STABLE", "draft-" + index, "quote-" + index, "AWAITING_DECISION", 1000000,
+                12, "DEVELOPMENT", new BigDecimal("0.2"), 100000, 1200000, index < 2 ? 30 : 80,
+                0, 1, java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
+                index < 2 ? "REJECTED" : "APPROVED", index < 2 ? "HIGH" : "LOW");
+        }
+        User staff = new User("staff", "STAFF", null, "test");
+        var first = applications.pageStaff(staff, "waiting", "", "", "", "", 1, 8);
+        var second = applications.pageStaff(staff, "waiting", "", "", "", "", 2, 8);
+        assertEquals(11L, first.get("total"));
+        assertEquals(8, list(first, "items").size());
+        assertEquals(3, list(second, "items").size());
+        var high = applications.pageStaff(staff, "waiting", "", "", "HIGH", "", 1, 8);
+        assertEquals(2L, high.get("total"));
+        assertEquals(DomainException.Kind.FORBIDDEN, assertThrows(DomainException.class,
+            () -> applications.pageStaff(stable, "waiting", "", "", "", "", 1, 8)).kind);
     }
 
     @SuppressWarnings("unchecked")
