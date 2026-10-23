@@ -249,6 +249,56 @@
           }
         }
       }
+    },
+    "/v1/tools": {
+      "post": {
+        "summary": "Native tool-calling step; tools execute in backend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "messages",
+                  "tools"
+                ],
+                "properties": {
+                  "messages": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "tools": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assistant message with content or native tool_calls; backend continues the loop"
+          },
+          "400": {
+            "description": "Invalid tool schemas or unmatched tool results"
+          },
+          "502": {
+            "description": "Invalid or truncated provider response"
+          },
+          "503": {
+            "description": "Provider unavailable or concurrency limit"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -12,6 +12,7 @@ import server
 
 
 class Provider(BaseHTTPRequestHandler):
+    message_override = None
     status = 200
     result = {"answer": "Ответ", "intent": "COLLECT_NEED", "proposed_fields": {"amount": 100000}}
     finish_reason = "stop"
@@ -27,7 +28,7 @@ class Provider(BaseHTTPRequestHandler):
         if self.delay:
             time.sleep(self.delay)
         body = json.dumps({"choices": [{"finish_reason": self.finish_reason,
-                                      "message": {"content": json.dumps(self.result)}}]}).encode()
+                                      "message": self.message_override or {"content": json.dumps(self.result)}}]}).encode()
         self.send_response(self.status)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
@@ -61,6 +62,7 @@ class InferenceTest(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         Provider.status, Provider.delay, Provider.finish_reason = 200, 0, 'stop'
+        Provider.message_override = None
         Provider.result = {'answer': 'Ответ', 'intent': 'COLLECT_NEED', 'proposed_fields': {'amount': 100000}}
         Provider.requests.clear()
 
@@ -84,6 +86,56 @@ class InferenceTest(unittest.TestCase):
         self.assertFalse(payload['stream'])
         self.assertEqual({'type': 'json_object'}, payload['response_format'])
         self.assertEqual('JSON instructions', payload['messages'][0]['content'])
+
+    def tool_request(self):
+        return {'messages': [{'role': 'user', 'content': 'Synthetic scenario'}], 'tools': [
+            {'type': 'function', 'function': {'name': name, 'parameters': {'type': 'object', 'properties': {}}}}
+            for name in sorted(server.TOOL_NAMES)]}
+
+    def test_native_tool_call_and_result_round_trip(self):
+        call = {'id': 'call-1', 'type': 'function', 'function': {'name': 'get_business_context', 'arguments': '{}'}}
+        Provider.finish_reason = 'tool_calls'
+        Provider.message_override = {'role': 'assistant', 'content': None, 'tool_calls': [call]}
+        body = self.tool_request()
+        status, result = self.request('/v1/tools', body)
+        self.assertEqual(200, status)
+        self.assertEqual([call], result['message']['tool_calls'])
+        payload = Provider.requests[-1][2]
+        self.assertEqual('auto', payload['tool_choice'])
+        self.assertFalse(payload['parallel_tool_calls'])
+        self.assertNotIn('response_format', payload)
+        body['messages'] += [result['message'], {'role': 'tool', 'tool_call_id': 'call-1', 'content': '{"income":100}'}]
+        Provider.finish_reason = 'stop'
+        Provider.message_override = {'role': 'assistant', 'content': 'Уточните спрос.'}
+        status, result = self.request('/v1/tools', body)
+        self.assertEqual(200, status)
+        self.assertEqual('Уточните спрос.', result['message']['content'])
+        self.assertEqual('call-1', Provider.requests[-1][2]['messages'][-1]['tool_call_id'])
+
+    def test_unknown_tools_unmatched_results_and_missing_results_are_rejected(self):
+        body = self.tool_request()
+        body['tools'][0]['function']['name'] = 'execute_shell'
+        self.assertEqual(400, self.request('/v1/tools', body)[0])
+        body = self.tool_request()
+        body['messages'].append({'role': 'tool', 'tool_call_id': 'unknown', 'content': '{}'})
+        self.assertEqual(400, self.request('/v1/tools', body)[0])
+        body = self.tool_request()
+        body['messages'].append({'role': 'assistant', 'tool_calls': [{'id': 'call-1', 'type': 'function', 'function': {'name': 'get_business_context', 'arguments': '{}'}}]})
+        self.assertEqual(400, self.request('/v1/tools', body)[0])
+        self.assertEqual([], Provider.requests)
+
+    def test_unknown_or_duplicate_returned_tool_calls_never_reach_backend(self):
+        Provider.finish_reason = 'tool_calls'
+        call = {'id': 'call-1', 'type': 'function', 'function': {'name': 'execute_shell', 'arguments': '{}'}}
+        Provider.message_override = {'role': 'assistant', 'content': None, 'tool_calls': [call]}
+        self.assertEqual((502, {'code': 'INVALID_MODEL_RESPONSE'}), self.request('/v1/tools', self.tool_request()))
+        call['function']['name'] = 'get_business_context'
+        Provider.message_override['tool_calls'] = [call, call]
+        self.assertEqual(502, self.request('/v1/tools', self.tool_request())[0])
+
+    def test_truncated_tool_generation_is_not_executed(self):
+        Provider.finish_reason = 'length'
+        self.assertEqual(502, self.request('/v1/tools', self.tool_request())[0])
 
     def test_assist_context_history_and_safe_actions(self):
         Provider.result = {'answer': 'Уточним цель', 'questions': ['Какой бюджет?'],

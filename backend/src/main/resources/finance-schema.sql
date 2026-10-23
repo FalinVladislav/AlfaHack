@@ -52,3 +52,38 @@ CREATE TABLE IF NOT EXISTS loan_requests (
 );
 CREATE INDEX IF NOT EXISTS transactions_company_date ON transactions(company_id, date);
 CREATE INDEX IF NOT EXISTS existing_loans_company ON existing_loans(company_id);
+
+CREATE TABLE IF NOT EXISTS business_scenario_dialogs (
+    id VARCHAR(36) PRIMARY KEY,
+    draft_id VARCHAR(36) NOT NULL REFERENCES drafts(id),
+    account_key VARCHAR(80) NOT NULL,
+    company_id VARCHAR(32) NOT NULL REFERENCES companies(id),
+    goal_key VARCHAR(64) NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    plan_version INTEGER NOT NULL DEFAULT 0,
+    confirmed_version INTEGER NOT NULL DEFAULT 0,
+    proposed_json TEXT,
+    confirmed_json TEXT,
+    history_json TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    working_quote_id VARCHAR(36),
+    round_count INTEGER NOT NULL DEFAULT 0,
+    lease_token VARCHAR(36),
+    lease_until TIMESTAMP,
+    last_error VARCHAR(500),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    UNIQUE(draft_id, account_key, goal_key)
+);
+CREATE INDEX IF NOT EXISTS business_scenario_queue ON business_scenario_dialogs(status, lease_until);
+CREATE TABLE IF NOT EXISTS business_scenario_runs (
+    id VARCHAR(36) PRIMARY KEY,
+    dialog_id VARCHAR(36) NOT NULL REFERENCES business_scenario_dialogs(id),
+    quote_id VARCHAR(36) NOT NULL REFERENCES quotes(id),
+    plan_version INTEGER NOT NULL,
+    context_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+ALTER TABLE business_scenario_dialogs ADD COLUMN IF NOT EXISTS working_plan_json TEXT;
