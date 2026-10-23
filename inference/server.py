@@ -61,11 +61,13 @@ def provider_complete(messages, tools=None):
         raise ApiError(503, "MODEL_NOT_CONFIGURED")
     payload = {
         "model": model, "messages": messages, "stream": False,
-        "max_completion_tokens": int(os.environ.get("OPENAI_MAX_COMPLETION_TOKENS", "4096")),
+        "max_completion_tokens": int(os.environ.get(
+            "OPENAI_TOOLS_MAX_COMPLETION_TOKENS" if tools is not None else "OPENAI_MAX_COMPLETION_TOKENS",
+            os.environ.get("OPENAI_MAX_COMPLETION_TOKENS", "16384" if tools is not None else "4096"))),
     }
     if tools is None:
         payload["response_format"] = {"type": "json_object"}
-    else:
+    elif tools:
         payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
     request = Request(base + "/chat/completions", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={
         "Content-Type": "application/json", "Authorization": "Bearer " + key}, method="POST")
@@ -77,13 +79,23 @@ def provider_complete(messages, tools=None):
             raise ValueError("Response too large")
         choice = json.loads(raw)["choices"][0]
         if tools is not None:
+            if not isinstance(choice, dict):
+                raise ValueError("Invalid choice")
             message = choice["message"]
-            calls = message.get("tool_calls") or []
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                raise ValueError("Invalid assistant message")
+            calls = message.get("tool_calls")
+            if calls is None:
+                calls = []
             if choice.get("finish_reason") not in ("stop", "tool_calls") or not isinstance(calls, list) or len(calls) > 3:
                 raise ValueError("Incomplete tool response")
+            if bool(calls) != (choice["finish_reason"] == "tool_calls"):
+                raise ValueError("Inconsistent finish reason")
             allowed = {tool["function"]["name"] for tool in tools}
             clean_calls, ids = [], set()
             for call in calls:
+                if not isinstance(call, dict) or not isinstance(call.get("function"), dict):
+                    raise ValueError("Invalid tool call")
                 function = call["function"]
                 call_id = text_field(call.get("id"), 200)
                 if call.get("type") != "function" or function.get("name") not in allowed or call_id in ids:
@@ -131,7 +143,7 @@ TOOL_NAMES = {"get_business_context", "get_missing_inputs", "simulate_scenarios"
 
 def validate_tools(body):
     tools, messages = body.get("tools"), body.get("messages")
-    if not isinstance(tools, list) or len(tools) != 3 or not isinstance(messages, list) or not 1 <= len(messages) <= 100:
+    if not isinstance(tools, list) or len(tools) not in (0, 3) or not isinstance(messages, list) or not 1 <= len(messages) <= 100:
         raise ValueError("Invalid tools request")
     names = set()
     for tool in tools:

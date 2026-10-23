@@ -689,7 +689,7 @@ paths:
                 plan_version: {type: integer, minimum: 1}
       responses:
         '200':
-          description: Формат трёх сценариев дополнен plan_version, business_plan, business_effects и метриками компонентов в scenarios[].business_effect; при нехватке истории INSUFFICIENT_DATA
+          description: Модель business-dependencies-v2. Формат трёх сценариев дополнен plan_version, business_plan, business_effects, horizon_months и метриками компонентов. scenarios[].funding_feasible=false означает нехватку денег на инвестиции; дальнейший операционный эффект остановлен. При пропусках или устаревшей истории INSUFFICIENT_DATA. Новые планы требуют сроков денежных потоков и проверяемых источников чисел; см. business-scenario-dialog.md.
           content:
             application/json:
               schema: {type: object, additionalProperties: true}
@@ -726,6 +726,10 @@ paths:
                   start_date: {type: string, format: date}
                   end_date: {type: string, format: date}
                   maturity_date: {type: string, format: date}
+                  horizon_months: {type: integer, minimum: 12}
+                  demo_clock: {type: boolean}
+                  probabilities_available: {type: boolean, enum: [false]}
+                  history_method: {type: string, enum: [LINEAR_TREND_RESIDUALS, LINEAR_TREND_SEASONAL_RESIDUALS]}
                   purpose: {type: string}
                   goal_text: {type: string, nullable: true}
                   inputs: {type: object, additionalProperties: true}
@@ -749,6 +753,13 @@ paths:
                         first_negative_date: {type: string, format: date, nullable: true}
                         loan_payments: {type: number}
                         remaining_principal: {type: number}
+                        funding_feasible: {type: boolean}
+                        funding_shortfall: {type: number}
+                        funding_failure_date: {type: string, format: date, nullable: true}
+                        uncollected_project_revenue: {type: number}
+                        prepaid_at_issue: {type: number}
+                        project_monthly_revenue: {type: number}
+                        project_monthly_expenses: {type: number}
                         benefit_start: {type: string, format: date}
                         project_revenue_factor: {type: number}
                         project_expense_factor: {type: number}

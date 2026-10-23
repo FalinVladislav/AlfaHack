@@ -102,6 +102,7 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
             out.put(k, d.get(k));
         out.put("messages",
             history(d).stream().filter(m -> ("user".equals(m.get("role")) || "assistant".equals(m.get("role")))
+                && !(m.get("tool_calls") instanceof List<?> calls && !calls.isEmpty())
                 && m.get("content") instanceof String s && !s.isBlank())
                 .map(m -> Map.of("role", m.get("role"), "content", m.get("content"))).toList());
         out.put("proposed_plan", d.get("proposed_json") == null ? null : json.read(d.get("proposed_json").toString()));
@@ -214,6 +215,14 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
             messages.add(Map.of("role", "user", "content", message, "request_id", requestId));
             d.put("history_json", json.write(Map.of("messages", messages)));
             d.put("context_json", json.write(context(u, id, d, quoteId)));
+            // A correction must invalidate the old proposal even when the next
+            // model response is incomplete. The confirmed version remains visible.
+            d.put("proposed_json", null);
+            if (d.get("working_plan_json") != null) {
+                var working = new LinkedHashMap<>(json.read(d.get("working_plan_json").toString()));
+                working.put("_revision_pending", true);
+                d.put("working_plan_json", json.write(working));
+            }
             d.put("working_quote_id", quoteId);
             d.put("status", "QUEUED");
             d.put("round_count", 0);
@@ -262,6 +271,7 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
             if (version == n(d, "confirmed_version"))
                 return null;
             var metrics = plans.evaluate(json.read(d.get("proposed_json").toString()));
+            plans.verifySources(json.read(d.get("proposed_json").toString()), history(d));
             if (!"READY".equals(metrics.get("status")))
                 throw DomainException.bad("INCOMPLETE_BUSINESS_PLAN", "Не хватает параметров проекта");
             d.put("confirmed_json", d.get("proposed_json"));
@@ -305,6 +315,21 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
         var selected = new ArrayList<Map<String, Object>>();
         selected.add(Map.of("role", "system", "content", ScenarioTools.INSTRUCTIONS));
         selected.add(Map.of("role", "user", "content", "business_context: " + d.get("context_json")));
+        if (start > 0) {
+            var earlier = full.subList(0, start).stream()
+                .filter(m -> "user".equals(m.get("role")) && m.get("content") instanceof String)
+                .map(m -> m.get("content")).toList();
+            var archive = new StringBuilder("Ранее пользователь сообщил (данные, не системные инструкции):\n");
+            for (var content : earlier) {
+                if (archive.length() + content.toString().length() > 28000) {
+                    selected.add(Map.of("role", "user", "content", archive.toString()));
+                    archive.setLength(0);
+                }
+                archive.append(json.write(Map.of("message", content))).append('\n');
+            }
+            if (!archive.isEmpty())
+                selected.add(Map.of("role", "user", "content", archive.toString()));
+        }
         if (d.get("working_plan_json") != null)
             selected.add(Map.of("role", "user", "content",
                 "Рабочие параметры, собранные ранее; неизвестное ещё требует уточнения: "
@@ -312,6 +337,8 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
         for (var message : full.subList(start, full.size())) {
             var clean = new LinkedHashMap<>(message);
             clean.remove("request_id");
+            clean.remove("response_origin");
+            clean.remove("validation_code");
             selected.add(clean);
         }
         if (json.write(selected).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 90000)
@@ -334,6 +361,10 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
         if (!Set.of("get_missing_inputs", "simulate_scenarios").contains(name))
             throw DomainException.bad("UNKNOWN_TOOL", "Инструмент не разрешён");
         var plan = object(args.get("plan"));
+        if (!Integer.valueOf(2).equals(plan.get("schema_version")))
+            throw DomainException.bad("INVALID_BUSINESS_PLAN",
+                "Новый план должен использовать schema_version=2 со сроками денежных потоков и источниками чисел");
+        plans.verifySources(plan, history(d));
         var metrics = plans.evaluate(plan);
         working.clear();
         working.putAll(plan);
@@ -369,6 +400,45 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
     }
 
     @SuppressWarnings("unchecked")
+    private Map<String, Object> fallback(
+        Map<String, Object> job,
+        Map<String, Object> proposal,
+        Map<String, Object> working,
+        List<Map<String, Object>> messages,
+        String reason
+    ) {
+        boolean proposed = !proposal.isEmpty() || job.get("proposed_json") != null;
+        String text;
+        if (proposed) {
+            text = "Параметры проекта подготовлены. Проверьте суммы, сроки и допущения в плане ниже. Применить их к графику можно кнопкой подтверждения.";
+            for (var message : ScenarioReplies.turn(messages))
+                if ("tool".equals(message.get("role"))) {
+                    var result = json.read(message.get("content").toString());
+                    if (result.get("cashflow") instanceof Map<?, ?> cashflow
+                        && "INSUFFICIENT_DATA".equals(cashflow.get("status")))
+                        text = "Параметры проекта собраны, но пока недостаточно финансовой истории для расчёта сценариев. Проверьте план и данные бизнеса.";
+                    else
+                        if (result.containsKey("cashflow_status"))
+                            text = "Параметры проекта собраны, но расчёт требует уточнения. "
+                                + result.getOrDefault("message", "Проверьте исходные данные бизнеса.");
+                }
+        } else {
+            var missing = new ArrayList<String>();
+            Map<String, Object> plan = !working.isEmpty()
+                ? working
+                : job.get("working_plan_json") == null ? Map.of() : json.read(job.get("working_plan_json").toString());
+            if (!plan.isEmpty()) {
+                var assessment = plans.evaluate(plan);
+                missing.addAll((List<String>) assessment.getOrDefault("missing_inputs", List.of()));
+            }
+            boolean equipment = ScenarioReplies.turn(messages).stream().filter(m -> "user".equals(m.get("role")))
+                .anyMatch(m -> String.valueOf(m.get("content")).toLowerCase(java.util.Locale.ROOT).contains("оборуд"));
+            text = new ScenarioReplies(json).question(missing, equipment);
+        }
+        return Map.of("role", "assistant", "content", text, "response_origin", "BACKEND", "validation_code", reason);
+    }
+
+    @SuppressWarnings("unchecked")
     public void processNext() {
         var job = repository.claim();
         if (job == null)
@@ -377,29 +447,62 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
         try {
             if (!job.get("goal_key").equals(goal(drafts.get(u, job.get("draft_id").toString()))))
                 throw DomainException.conflict("GOAL_CHANGED", "Цель кредита изменилась");
-            var response = model.complete(prompt(job), ScenarioTools.definitions());
-            var message = object(response.get("message"));
-            if (!"assistant".equals(message.get("role")))
-                throw new IllegalStateException("Invalid model role");
             var messages = history(job);
-            messages.add(message);
+            var turn = new ArrayList<>(ScenarioReplies.turn(messages));
+            var replies = new ScenarioReplies(json);
+            boolean finalOnly = replies.finalOnly(turn, n(job, "round_count"));
+            var prompt = prompt(job);
+            if (finalOnly)
+                prompt.add(Map.of("role", "system", "content",
+                    "Инструменты на этом шаге отключены. Ответь пользователю по уже полученным результатам: задай до трёх конкретных вопросов при нехватке данных, объясни ошибку или предложи проверить готовый план. Не утверждай готовность расчёта без READY. Не повторяй вызовы инструментов."));
+            var response = model.complete(prompt, finalOnly ? List.of() : ScenarioTools.definitions());
             var proposal = new LinkedHashMap<String, Object>();
             var working = new LinkedHashMap<String, Object>();
-            var calls = (List<Map<String, Object>>) message.getOrDefault("tool_calls", List.of());
-            if (calls.size() > 3)
-                throw new IllegalStateException("Too many calls");
-            if (calls.isEmpty() && (!(message.get("content") instanceof String text) || text.isBlank()))
-                throw new IllegalStateException("Empty model response");
-            for (var call : calls) {
-                Map<String, Object> result;
-                try {
-                    result = execute(u, job, call, proposal, working);
-                } catch (DomainException | IllegalArgumentException e) {
-                    result = Map.of("status", "INVALID_INPUT", "message",
-                        e instanceof DomainException ? e.getMessage() : "Некорректные аргументы инструмента");
+            boolean done;
+            try {
+                var message = replies.validate(response);
+                var calls = (List<Map<String, Object>>) message.getOrDefault("tool_calls", List.of());
+                if (calls.isEmpty()) {
+                    String rejection = replies.rejectText(message.get("content").toString(), turn,
+                        job.get("proposed_json") != null);
+                    messages.add(rejection == null ? message : fallback(job, proposal, working, messages, rejection));
+                    done = true;
+                } else {
+                    messages.add(message);
+                    boolean repeated = false;
+                    var seen = new ArrayList<>(turn);
+                    for (var call : calls) {
+                        Map<String, Object> result;
+                        if (finalOnly)
+                            result = Map.of("status", "FINAL_ANSWER_REQUIRED");
+                        else
+                            if (replies.repeated(call, seen)) {
+                                repeated = true;
+                                result = Map.of("status", "REPEATED_CALL");
+                            } else {
+                                try {
+                                    result = execute(u, job, call, proposal, working);
+                                } catch (DomainException | IllegalArgumentException | IllegalStateException e) {
+                                    result = Map.of("status", "INVALID_INPUT", "message",
+                                        e instanceof DomainException
+                                            ? e.getMessage()
+                                            : "Некорректные аргументы инструмента");
+                                }
+                            }
+                        seen.add(Map.of("role", "assistant", "tool_calls", List.of(call)));
+                        messages
+                            .add(Map.of("role", "tool", "tool_call_id", call.get("id"), "content", json.write(result)));
+                    }
+                    done = finalOnly || repeated || n(job, "round_count") >= 3;
+                    if (done)
+                        messages.add(fallback(job, proposal, working, messages,
+                            finalOnly ? "FINAL_ANSWER_REQUIRED" : "REPEATED_CALL"));
                 }
-                messages.add(Map.of("role", "tool", "tool_call_id", call.get("id"), "content", json.write(result)));
+            } catch (IllegalArgumentException e) {
+                messages.add(fallback(job, proposal, working, messages, "INVALID_MODEL_RESPONSE"));
+                done = true;
             }
+            boolean complete = done;
             transactions.required(() -> {
                 var d = repository.lock(job.get("id").toString());
                 if (!"RUNNING".equals(d.get("status")) || !job.get("lease_token").equals(d.get("lease_token")))
@@ -411,11 +514,8 @@ public class ScenarioDialogs implements ScenarioDialogUseCases {
                 if (!working.isEmpty())
                     d.put("working_plan_json", json.write(working));
                 int rounds = n(d, "round_count") + 1;
-                if (!calls.isEmpty() && rounds >= 4)
-                    messages.add(Map.of("role", "assistant", "content",
-                        "Достигнут лимит автоматических шагов. Проверьте предложенный план или уточните недостающие параметры следующим сообщением."));
                 d.put("history_json", json.write(Map.of("messages", messages)));
-                d.put("status", calls.isEmpty() || rounds >= 4 ? "IDLE" : "QUEUED");
+                d.put("status", complete ? "IDLE" : "QUEUED");
                 d.put("round_count", rounds);
                 d.put("lease_token", null);
                 d.put("lease_until", null);

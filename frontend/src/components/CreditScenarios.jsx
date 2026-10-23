@@ -136,8 +136,8 @@ export default function CreditScenarios({ draftId, quoteId, pending, purpose }) 
     >
       <h2 id="scenario-heading">Что будет после кредита</h2>
       <p className="data-note">
-        Три условных сценария остатка денег. Базовый — сохранение текущей деятельности, а не
-        обещание стабильности.
+        Три условных сценария остатка денег. Базовый продолжает исторический тренд и учитывает
+        подтверждённый проект. Вероятности исходов не оценены.
       </p>
       <BusinessScenarioDialog
         draftId={draftId}
@@ -214,12 +214,15 @@ export default function CreditScenarios({ draftId, quoteId, pending, purpose }) 
                   {s.title}
                 </h3>
                 <p className="data-note">
-                  Выручка бизнеса {Math.round(s.revenue_change * 100) > 0 ? '+' : ''}
-                  {Math.round(s.revenue_change * 100)}% к среднему
+                  Отклонение от исторического тренда:{' '}
+                  {Math.round(s.revenue_change * 100) > 0 ? '+' : ''}
+                  {Math.round(s.revenue_change * 100)}%.
                 </p>
                 {s.business_effect && (
                   <p className="data-note">
-                    Эффект проекта до выплат: {money(s.business_effect.monthly_net_delta)} в месяц.
+                    Эффект проекта на полной загрузке до налога и выплат:{' '}
+                    {money(Number(s.project_monthly_revenue) - Number(s.project_monthly_expenses))}{' '}
+                    в месяц. Запуск: {date(s.benefit_start)} {s.benefit_start.slice(0, 4)}.
                     {s.business_effect.metrics
                       ?.filter((m) => m.kind === 'SALES')
                       .map((m) => (
@@ -250,6 +253,19 @@ export default function CreditScenarios({ draftId, quoteId, pending, purpose }) 
                     <dd>{money(s.without_credit_ending_balance)}</dd>
                   </div>
                 </dl>
+                {s.funding_feasible === false && (
+                  <p className="scenario-warning">
+                    Для проекта не хватает {money(s.funding_shortfall)} на{' '}
+                    {date(s.funding_failure_date)}. Проект не обеспечен финансированием; дальнейший
+                    операционный эффект остановлен.
+                  </p>
+                )}
+                {Number(s.uncollected_project_revenue) > 0 && (
+                  <p className="data-note">
+                    Выручка, ещё не полученная к концу периода:{' '}
+                    {money(s.uncollected_project_revenue)}.
+                  </p>
+                )}
                 <p className={Number(s.gap_amount) > 0 ? 'scenario-warning' : 'data-note'}>
                   {Number(s.gap_amount) > 0
                     ? `Нехватка до ${money(s.gap_amount)}, впервые ${date(s.first_negative_date)}.`
@@ -259,15 +275,18 @@ export default function CreditScenarios({ draftId, quoteId, pending, purpose }) 
             ))}
           </div>
           <p className="data-note">
-            Выплаты по новому кредиту за период: {money(outcomes[1].loan_payments)}. Остаток
-            основного долга: {money(outcomes[1].remaining_principal)}. Погашение —{' '}
-            {date(data.maturity_date)} {data.maturity_date.slice(0, 4)}.
+            Расчёт на {date(data.start_date)} {data.start_date.slice(0, 4)}.
+            {data.demo_clock && ' Используется демонстрационная дата.'} Выплаты по новому кредиту за
+            период: {money(outcomes[1].loan_payments)}. Остаток основного долга:{' '}
+            {money(outcomes[1].remaining_principal)}. Погашение — {date(data.maturity_date)}{' '}
+            {data.maturity_date.slice(0, 4)}.
           </p>
           <details className="scenario-method">
             <summary>Данные и допущения расчёта</summary>
             <p>
-              Использовано полных месяцев: {data.basis.months}. Средняя выручка:{' '}
-              {money(data.basis.monthly_income)} в месяц. Данные:{' '}
+              Горизонт после выдачи: {data.horizon_months} мес. Использовано полных месяцев:{' '}
+              {data.basis.months}. Средняя историческая выручка: {money(data.basis.monthly_income)}{' '}
+              в месяц. Данные:{' '}
               {data.basis.data_origin === 'SYNTHETIC' ? 'синтетические' : 'история бизнеса'}.
             </p>
             <p>

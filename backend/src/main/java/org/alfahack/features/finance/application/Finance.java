@@ -74,8 +74,10 @@ public class Finance implements FinanceUseCases {
 
     public List<Map<String, Object>> loans(User user) {
         user.client();
+        var schedule = repository.unpaidSchedule(user.company());
         List<Map<String, Object>> result = new ArrayList<>(repository.existingLoans(user.company()));
         for (var loan : repository.issuedLoans(user.company())) {
+            loan.put("schedule", schedule.stream().filter(p -> loan.get("id").equals(p.get("loan_id"))).toList());
             var issued = (LocalDate) loan.get("issue_date");
             if (issued != null) {
                 LocalDate maturity = loan.get("duration_days") != null
