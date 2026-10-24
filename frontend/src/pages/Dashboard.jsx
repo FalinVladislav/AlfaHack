@@ -17,6 +17,7 @@ function Change({ current, previous, expense = false }) {
 
 export default function Dashboard({
   finance,
+  dashboard,
   insights,
   applications,
   onNavigate,
@@ -31,7 +32,10 @@ export default function Dashboard({
   const latest = finance.months.at(-1) || {}
   const previous = finance.months.at(-2) || {}
   const monthlyPayment = sum(finance.loans, 'monthly_payment')
-  const load = Number(latest.income) ? monthlyPayment / Number(latest.income) : 0
+  const completed = finance.months
+    .filter((month) => month.month < (dashboard?.business_today || '').slice(0, 7))
+    .at(-1)
+  const load = Number(completed?.income) > 0 ? monthlyPayment / Number(completed.income) : null
   const cards = insights?.cards || []
   const opportunity = cards[slide % Math.max(cards.length, 1)]
   const changeSlide = (delta) => setSlide((value) => (value + delta + cards.length) % cards.length)
@@ -72,7 +76,7 @@ export default function Dashboard({
           <h2>Кредитная нагрузка</h2>
           <div className="load">
             <div>
-              <strong>{percent(load)}</strong>
+              <strong>{load == null ? 'Нет сведений' : percent(load)}</strong>
               <p>
                 {money(monthlyPayment)}
                 <br /> в месяц
@@ -94,7 +98,7 @@ export default function Dashboard({
                 stroke="url(#debt-gradient)"
                 strokeWidth="16"
                 strokeLinecap="round"
-                strokeDasharray={`${Math.min(1, load) * 295} 295`}
+                strokeDasharray={`${Math.min(1, load ?? 0) * 295} 295`}
               />
             </svg>
           </div>

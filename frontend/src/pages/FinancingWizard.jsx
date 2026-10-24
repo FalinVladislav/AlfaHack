@@ -194,12 +194,12 @@ export default function FinancingWizard({
   }, [draftId, initialNeed])
 
   useEffect(() => {
-    if (!form.needed_by && dashboard?.demo_today) {
-      const day = new Date(dashboard.demo_today + 'T12:00:00')
-      day.setDate(day.getDate() + 10)
+    if (!form.needed_by && dashboard?.business_today) {
+      const day = new Date(dashboard.business_today + 'T12:00:00Z')
+      day.setUTCDate(day.getUTCDate() + 10)
       setForm((previous) => ({ ...previous, needed_by: day.toISOString().slice(0, 10) }))
     }
-  }, [dashboard?.demo_today, form.needed_by])
+  }, [dashboard?.business_today, form.needed_by])
 
   useEffect(() => {
     const current = ++sequence.current
@@ -345,8 +345,8 @@ export default function FinancingWizard({
       </Empty>
     )
   const chosen = quotes?.options.find((option) => option.quote_id && option.quote_id === selected)
-  const tomorrow = new Date(dashboard.demo_today + 'T12:00:00')
-  tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrow = new Date(dashboard.business_today + 'T12:00:00Z')
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
 
   return (
     <>
@@ -411,7 +411,7 @@ export default function FinancingWizard({
                   type="date"
                   min={tomorrow.toISOString().slice(0, 10)}
                   max={new Date(
-                    new Date(dashboard.demo_today + 'T12:00:00Z').getTime() + 120 * 86400000,
+                    new Date(dashboard.business_today + 'T12:00:00Z').getTime() + 120 * 86400000,
                   )
                     .toISOString()
                     .slice(0, 10)}

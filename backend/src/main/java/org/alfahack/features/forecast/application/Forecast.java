@@ -2,6 +2,7 @@ package org.alfahack.features.forecast.application;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,13 +15,16 @@ public class Forecast implements org.alfahack.features.forecast.port.ForecastUse
 
     private final ForecastRepository repository;
     private final LocalDate today;
+    private final ZoneId businessZone;
 
     public Forecast(
         ForecastRepository repository,
-        String today
+        String today,
+        String businessZone
     ) {
         this.repository = repository;
         this.today = LocalDate.parse(today);
+        this.businessZone = ZoneId.of(businessZone);
     }
 
     public Map<String, Object> dashboard(
@@ -29,7 +33,8 @@ public class Forecast implements org.alfahack.features.forecast.port.ForecastUse
         user.client();
         Map<String, Object> company = repository.company(user.company());
         Map<String, Object> forecast = forecast(user, "30D", "BASE");
-        return Map.of("company", company, "demo_today", today, "forecast", forecast, "news",
+        return Map.of("company", company, "demo_today", today,
+            "business_today", LocalDate.now(businessZone), "forecast", forecast, "news",
             List.of(
                 Map.of("title", "Как выбрать срок финансирования", "text",
                     "Сравните платёж и общую стоимость для разных сроков."),
@@ -45,6 +50,7 @@ public class Forecast implements org.alfahack.features.forecast.port.ForecastUse
         user.client();
         if (!List.of("30D", "6M").contains(horizon) || !List.of("BASE", "STRESS").contains(scenario))
             throw DomainException.bad("INVALID_SCENARIO", "Выберите доступный горизонт и сценарий");
+        LocalDate today = LocalDate.now(businessZone);
         int days = horizon.equals("30D") ? 30 : 183;
         BigDecimal balance = (BigDecimal) repository.balance(user.company()).get("balance");
         var events = repository.plannedEvents(user.company(), today, today.plusDays(days));
@@ -88,6 +94,7 @@ public class Forecast implements org.alfahack.features.forecast.port.ForecastUse
         String horizon,
         String scenario
     ) {
+        LocalDate today = LocalDate.now(businessZone);
         Map<String, Object> baseline = forecast(user, horizon, scenario);
         var draft = repository.draft((String) quote.get("draft_id"));
         if (((Number) draft.get("version")).intValue() != ((Number) quote.get("draft_version")).intValue())

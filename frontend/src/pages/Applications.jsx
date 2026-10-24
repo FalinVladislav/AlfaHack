@@ -59,7 +59,10 @@ const term = (item) =>
       ? item.term_months + ' мес.'
       : 'Нет сведений'
 const shortId = (id) => (id ? id.slice(0, 8).toUpperCase() : '—')
-const timestamp = (value) => (value ? new Date(value).toLocaleString('ru-RU') : 'Нет сведений')
+const timestamp = (value) =>
+  value
+    ? new Date(/[Zz]|[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`).toLocaleString('ru-RU')
+    : 'Нет сведений'
 
 export default function Applications({
   applications,
@@ -219,6 +222,11 @@ export default function Applications({
           onSign={() => setSignConfirm(true)}
           onRetryDisbursement={() => act('/disburse', undefined, true)}
           onLoans={() => onNavigate('loans')}
+          onSchedule={() => {
+            const schedule = document.getElementById('application-schedule')
+            schedule?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            schedule?.focus({ preventScroll: true })
+          }}
         />
       )}
       {mode && (
@@ -227,8 +235,11 @@ export default function Applications({
           mode={mode}
           busy={busy}
           onClose={() => setMode('')}
-          onSave={async (body) => {
-            const result = await run(() => post('/staff/applications/' + id + '/decision', body))
+          onSave={async (body, onSaveError) => {
+            const result = await run(
+              () => post('/staff/applications/' + id + '/decision', body),
+              (error) => onSaveError(error.message),
+            )
             if (result) {
               setDetail(result)
               setMode('')
@@ -467,6 +478,10 @@ function StaffQueue({ revision, me, onNavigate }) {
         </div>
       ) : !result.counts.history ? (
         <Empty title="Заявок пока нет">Новые заявки появятся здесь после отправки клиентом.</Empty>
+      ) : !result.total && !query && !status && !risk && !assignee && !result.counts[tab] ? (
+        <Empty title="В этой вкладке пока нет заявок">
+          Новые заявки появятся здесь после изменения их статуса.
+        </Empty>
       ) : !result.total ? (
         <Empty title="Ничего не найдено">Измените поиск или сбросьте фильтры.</Empty>
       ) : (
@@ -569,11 +584,18 @@ function History({ events }) {
               <time>{timestamp(event.created_at)}</time>
               <strong>
                 {event.event_type
-                  ? eventNames[event.event_type] || event.event_type
+                  ? eventNames[event.event_type] || statuses[event.event_type] || event.event_type
                   : statuses[event.new_status] || event.new_status}
               </strong>
-              <span>{show(event.actor)}</span>
-              {event.details && <p>{event.details}</p>}
+              <span>{event.actor === 'SYSTEM' ? 'Система банка' : show(event.actor)}</span>
+              {event.details && (
+                <p>
+                  {event.event_type === 'SCORING_RESULT' &&
+                  event.details.startsWith('Рекомендация: ')
+                    ? `Рекомендация: ${recommendations[event.details.slice(14)] || event.details.slice(14)}`
+                    : event.details}
+                </p>
+              )}
             </li>
           ))}
         </ol>
@@ -676,9 +698,16 @@ function StaffCard({ detail, me, busy, onClaim, onRetry, onMode }) {
             <div className="workflow-obligations">
               {detail.obligations.map((loan) => (
                 <div key={loan.id}>
-                  <strong>{loan.name}</strong>
+                  <strong>
+                    {loan.name}
+                    {loan.source === 'ISSUED' ? ` · № ${shortId(loan.id)}` : ''}
+                  </strong>
                   <span>Остаток: {money(loan.remaining_debt)}</span>
-                  <span>Платёж: {money(loan.monthly_payment)} в месяц</span>
+                  <span>
+                    {loan.duration_days ? 'Ближайший платёж' : 'Платёж'}:{' '}
+                    {money(loan.monthly_payment)}
+                    {loan.duration_days ? '' : ' в месяц'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -867,6 +896,7 @@ function ClientCard({
   onSign,
   onRetryDisbursement,
   onLoans,
+  onSchedule,
   file,
   onFile,
   onUpload,
@@ -998,7 +1028,7 @@ function ClientCard({
                 <button className="primary" onClick={onLoans}>
                   Открыть кредит
                 </button>
-                <button className="secondary" onClick={onLoans}>
+                <button className="secondary" onClick={onSchedule}>
                   Посмотреть график
                 </button>
               </div>
@@ -1085,7 +1115,7 @@ function ClientCard({
           </section>
         )}
         {detail.schedule?.length > 0 && (
-          <section className="surface workflow-section">
+          <section className="surface workflow-section" id="application-schedule" tabIndex={-1}>
             <h2>График платежей</h2>
             <div className="workflow-schedule">
               {detail.schedule.map((item) => (
@@ -1093,7 +1123,10 @@ function ClientCard({
                   <span>
                     № {item.installment} · {date(item.due_date)}
                   </span>
-                  <strong>{money(item.payment)}</strong>
+                  <strong>
+                    {money(item.payment)}
+                    {item.paid_at ? ' · Оплачен' : ''}
+                  </strong>
                 </div>
               ))}
             </div>
@@ -1123,6 +1156,7 @@ function ClientCard({
 }
 
 function DecisionDialog({ detail, mode, busy, onClose, onSave }) {
+  const meaningfulLength = (value) => value.replace(/\s+/g, '').length
   const request = detail.request || {}
   const [amount, setAmount] = useState(String(request.amount ?? ''))
   const [months, setMonths] = useState(String(request.term_months ?? request.duration_days ?? ''))
@@ -1187,6 +1221,32 @@ function DecisionDialog({ detail, mode, busy, onClose, onSave }) {
     setSaveError('')
     if (!preview) return
     if (!confirm) {
+      if (meaningfulLength(internal) < 10) {
+        setSaveError('Укажите внутреннее обоснование — не менее 10 символов без пробелов.')
+        return
+      }
+      if (meaningfulLength(message) < 5) {
+        setSaveError('Укажите сообщение клиенту — не менее 5 символов без пробелов.')
+        return
+      }
+      if (
+        (mode === 'REJECT' || mode === 'COUNTEROFFER') &&
+        meaningfulLength(reason === 'Иная причина' ? otherReason : reason) < 5
+      ) {
+        setSaveError('Укажите причину решения — не менее 5 символов без пробелов.')
+        return
+      }
+      if (opposite && meaningfulLength(divergence) < 15) {
+        setSaveError('Обоснуйте расхождение со скорингом — не менее 15 символов без пробелов.')
+        return
+      }
+      if (mode !== 'REJECT') {
+        const end = new Date(expiry).getTime()
+        if (!Number.isFinite(end) || end <= Date.now() || end > Date.now() + 30 * 86400000) {
+          setSaveError('Укажите срок действия предложения от будущего момента до 30 дней.')
+          return
+        }
+      }
       setConfirm(true)
       return
     }
@@ -1200,10 +1260,9 @@ function DecisionDialog({ detail, mode, busy, onClose, onSave }) {
       client_message: message,
       reason: reason === 'Иная причина' ? otherReason : reason,
       divergence_reason: divergence,
-      expires_at: expiry,
+      expires_at: new Date(expiry).toISOString(),
     }
-    const result = await onSave(body)
-    if (!result) setSaveError('Решение не сохранено. Проверьте поля и повторите.')
+    await onSave(body, setSaveError)
   }
   return (
     <div className="workflow-modal-backdrop" role="presentation">
@@ -1349,7 +1408,13 @@ function DecisionDialog({ detail, mode, busy, onClose, onSave }) {
               )}
               <label>
                 Внутреннее обоснование
-                <textarea value={internal} onChange={(e) => setInternal(e.target.value)} rows="3" />
+                <textarea
+                  value={internal}
+                  onChange={(e) => setInternal(e.target.value)}
+                  placeholder="Например: подтверждённый денежный поток не покрывает платёж по кредиту"
+                  rows="3"
+                />
+                <small>Укажите конкретное основание, не менее 10 символов без пробелов.</small>
               </label>
               {opposite && (
                 <label>

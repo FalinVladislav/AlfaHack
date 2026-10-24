@@ -8,10 +8,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.alfahack.core.domain.User;
+import org.alfahack.core.domain.Product;
 import org.alfahack.core.domain.Util;
 import org.alfahack.core.errors.DomainException;
 import org.alfahack.features.applications.port.ApplicationUseCases;
 import org.alfahack.features.drafts.port.DraftUseCases;
+import org.alfahack.features.products.port.ProductCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class ApplicationWorkflowIntegrationTest {
+
+    @Autowired
+    ProductCatalog products;
 
     private final User client = new User("stable", "CLIENT", "STABLE", "test");
     private final User otherClient = new User("gap", "CLIENT", "GAP", "test");
@@ -40,7 +45,8 @@ class ApplicationWorkflowIntegrationTest {
         var draft = drafts.create(client);
         String id = (String) draft.get("id");
         draft = drafts.update(client, id, Map.of("expected_version", draft.get("version"),
-            "purpose", "EXPANSION", "amount", amount, "term_months", 24, "needed_by", "2026-11-01"));
+            "purpose", "EXPANSION", "amount", amount, "term_months", 24, "needed_by",
+            java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).plusDays(10).toString()));
         var quotes = drafts.quote(client, id, Map.of("expected_version", draft.get("version")));
         var options = (List<Map<String, Object>>) quotes.get("options");
         var quote = options.stream().filter(item -> "DEVELOPMENT".equals(item.get("product_id"))).findFirst()
@@ -51,6 +57,24 @@ class ApplicationWorkflowIntegrationTest {
 
     private Map<String, Object> claim(Map<String, Object> application) {
         return apps.claim(staff, (String) application.get("id"), ((Number) application.get("version")).intValue());
+    }
+
+    @Test
+    void submittedQuoteIsRejectedWhenItsNeedDateHasPassed() {
+        var draft = drafts.create(client);
+        String id = (String) draft.get("id");
+        draft = drafts.update(client, id, Map.of("expected_version", draft.get("version"),
+            "purpose", "EXPANSION", "amount", "1000000", "term_months", 24, "needed_by",
+            java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).plusDays(10).toString()));
+        var quotes = drafts.quote(client, id, Map.of("expected_version", draft.get("version")));
+        var quote = ((List<Map<String, Object>>) quotes.get("options")).stream()
+            .filter(item -> "DEVELOPMENT".equals(item.get("product_id"))).findFirst().orElseThrow();
+        db.update("UPDATE drafts SET needed_by=? WHERE id=?",
+            java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).minusDays(1), id);
+        Map<String, Object> body = Map.of("draft_id", id, "quote_id", quote.get("quote_id"),
+            "expected_version", draft.get("version"), "consents", true);
+        assertEquals(DomainException.Kind.CONFLICT,
+            assertThrows(DomainException.class, () -> apps.submit(client, body, Util.id())).kind);
     }
 
     private Map<String, Object> decisionBody(
@@ -66,7 +90,8 @@ class ApplicationWorkflowIntegrationTest {
         body.put("term_months", preview.get("term_months"));
         body.put("internal_reason", "Проверены денежный поток, нагрузка и условия продукта");
         body.put("client_message", "Решение по вашей заявке доступно в кабинете");
-        body.put("expires_at", LocalDateTime.now().plusDays(7).toString());
+        body.put("expires_at", java.time.OffsetDateTime.now(java.time.ZoneOffset.ofHours(3))
+            .plusDays(7).toString());
         return body;
     }
 
@@ -85,6 +110,8 @@ class ApplicationWorkflowIntegrationTest {
         assertEquals(0, ((BigDecimal) ((Map<?, ?>) decided.get("request")).get("amount"))
             .compareTo(new BigDecimal("1000000")));
         var offer = (Map<?, ?>) decided.get("offer");
+        assertTrue(java.time.Duration.between(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
+            .plusDays(7), (LocalDateTime) offer.get("expires_at")).abs().toSeconds() < 60);
         var accepted = apps.accept(client, id, Map.of("offer_id", offer.get("id"),
             "offer_version", offer.get("version")), Util.id());
         assertEquals("OFFER_ACCEPTED", accepted.get("status"));
@@ -99,6 +126,34 @@ class ApplicationWorkflowIntegrationTest {
             Integer.class, id));
         assertEquals(24, ((List<?>) apps.detail(client, id).get("schedule")).size());
         assertEquals("DISBURSED", apps.detail(client, id).get("status"));
+    }
+
+    @Test
+    void disbursementUsesTheRateSavedInTheAcceptedOffer() {
+        var submitted = submit("1000000");
+        String id = (String) submitted.get("id");
+        var claimed = claim(submitted);
+        var preview = apps.preview(staff, id, Map.of());
+        var decided = apps.decide(staff, id, decisionBody(claimed, preview, "APPROVE"));
+        var offer = (Map<?, ?>) decided.get("offer");
+        Product catalog = products.get((String) offer.get("product_id"));
+        BigDecimal savedRate = new BigDecimal("0.19");
+        Product agreed = new Product(catalog.id(), catalog.name(), catalog.purpose(), catalog.min(),
+            catalog.max(), catalog.minTerm(), catalog.maxTerm(), savedRate, catalog.unit());
+        var calculation = products.calculate(agreed, (BigDecimal) offer.get("amount"),
+            (Integer) offer.get("term_months"), (Integer) offer.get("duration_days"));
+        db.update("UPDATE application_offers SET annual_rate=?,monthly_payment=?,total_repay=? WHERE id=?",
+            savedRate, calculation.get("monthly_payment"), calculation.get("total_repay"), offer.get("id"));
+        var displayed = (List<?>) apps.detail(client, id).get("offer_schedule");
+        assertEquals(0, ((BigDecimal) ((Map<?, ?>) displayed.getFirst()).get("interest"))
+            .compareTo((BigDecimal) ((Map<?, ?>) ((List<?>) calculation.get("schedule")).getFirst())
+                .get("interest")));
+        apps.accept(client, id, Map.of("offer_id", offer.get("id"), "offer_version", offer.get("version")),
+            Util.id());
+        assertEquals("DISBURSED", apps.sign(client, id, Map.of("confirmation", true), Util.id()).get("status"));
+        assertEquals(0, ((BigDecimal) calculation.get("total_repay")).compareTo(db.queryForObject(
+            "SELECT SUM(s.payment) FROM loan_schedule s JOIN loans l ON l.id=s.loan_id WHERE l.application_id=?",
+            BigDecimal.class, id)));
     }
 
     @Test
@@ -211,7 +266,8 @@ class ApplicationWorkflowIntegrationTest {
         var claimed = claim(submitted);
         var preview = apps.preview(staff, id, Map.of());
         var body = decisionBody(claimed, preview, "APPROVE");
-        body.put("expires_at", LocalDateTime.now().plusSeconds(1).toString());
+        body.put("expires_at", java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
+            .plusSeconds(1).toString());
         var decided = apps.decide(staff, id, body);
         Thread.sleep(1200);
         var offer = (Map<?, ?>) decided.get("offer");

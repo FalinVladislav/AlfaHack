@@ -71,9 +71,10 @@ public class FeatureConfiguration {
         org.alfahack.features.finance.port.FinanceUseCases finance,
         ForecastRepository repository,
         ProductCatalog products,
-        @Value("${app.demo-today}") String today
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new org.alfahack.features.forecast.application.CreditScenarios(finance, repository, products, today);
+        return new org.alfahack.features.forecast.application.CreditScenarios(finance, repository, products,
+            java.time.ZoneId.of(businessZone));
     }
 
     @Bean
@@ -151,9 +152,10 @@ public class FeatureConfiguration {
         org.alfahack.features.finance.port.FinanceUseCases finance,
         ForecastUseCases forecast,
         ProductCatalog products,
-        @Value("${app.demo-today}") String today
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new org.alfahack.features.products.application.FinancingLimits(finance, forecast, products, today);
+        return new org.alfahack.features.products.application.FinancingLimits(finance, forecast, products,
+            businessZone);
     }
 
     @Bean
@@ -163,9 +165,9 @@ public class FeatureConfiguration {
         ProductCatalog products,
         org.alfahack.features.products.port.FinancingLimitUseCases limits,
         org.alfahack.features.goals.port.GoalUseCases goals,
-        @Value("${app.demo-today}") String today
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new Drafts(transactions, repository, products, limits, goals, today);
+        return new Drafts(transactions, repository, products, limits, goals, businessZone);
     }
 
     @Bean
@@ -177,9 +179,11 @@ public class FeatureConfiguration {
         RiskAssessment scoring,
         ProfileCatalog profiles,
         JsonCodec json,
-        @Value("${app.demo-today}") String today
+        @Value("${app.demo-today}") String today,
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new Applications(transactions, repository, drafts, products, scoring, profiles, json, today);
+        return new Applications(transactions, repository, drafts, products, scoring, profiles, json, today,
+            businessZone);
     }
 
     @Bean
@@ -195,9 +199,10 @@ public class FeatureConfiguration {
     @Bean
     ForecastUseCases forecast(
         ForecastRepository repository,
-        @Value("${app.demo-today}") String today
+        @Value("${app.demo-today}") String today,
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new Forecast(repository, today);
+        return new Forecast(repository, today, businessZone);
     }
 
     @Bean
@@ -222,8 +227,10 @@ public class FeatureConfiguration {
         AssistantRepository repository,
         DraftUseCases drafts,
         ApplicationUseCases applications,
-        LanguageModel model
+        LanguageModel model,
+        ProductCatalog products,
+        @Value("${app.business-zone}") String businessZone
     ) {
-        return new Assistant(repository, drafts, applications, model);
+        return new Assistant(repository, drafts, applications, model, products, businessZone);
     }
 }

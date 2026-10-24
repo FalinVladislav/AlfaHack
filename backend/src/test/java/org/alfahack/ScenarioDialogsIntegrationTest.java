@@ -74,7 +74,8 @@ class ScenarioDialogsIntegrationTest {
         var draft = drafts.create(user);
         id = draft.get("id").toString();
         draft = drafts.update(user, id, Map.of("expected_version", draft.get("version"), "purpose", "EXPANSION",
-            "amount", "1000000", "term_months", 24, "needed_by", "2026-11-01"));
+            "amount", "1000000", "term_months", 24, "needed_by",
+            java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).plusDays(10).toString()));
         qid = BusinessPlanTest.rows(drafts.quote(user, id, Map.of("expected_version", draft.get("version"))), "options")
             .stream().filter(o -> o.get("quote_id") != null).findFirst().orElseThrow().get("quote_id").toString();
     }

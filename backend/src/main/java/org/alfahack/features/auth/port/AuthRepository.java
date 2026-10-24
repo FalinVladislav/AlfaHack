@@ -27,7 +27,8 @@ public interface AuthRepository {
     );
 
     Map<String, Object> session(
-        String token
+        String token,
+        LocalDateTime notBefore
     );
 
     void deleteSession(

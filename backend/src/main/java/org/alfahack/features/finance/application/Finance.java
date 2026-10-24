@@ -27,15 +27,18 @@ public class Finance implements FinanceUseCases {
         var grouped = new TreeMap<YearMonth, BigDecimal[]>();
         for (var transaction : transactions) {
             var month = YearMonth.from((LocalDate) transaction.get("date"));
-            var totals = grouped.computeIfAbsent(month, key -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
-            int index = "INCOME".equals(transaction.get("type")) ? 0 : 1;
+            var totals = grouped.computeIfAbsent(month,
+                key -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+            String type = (String) transaction.get("type");
+            int index = "INCOME".equals(type) ? 0 : "EXPENSE".equals(type) ? 1 : 2;
             totals[index] = totals[index].add((BigDecimal) transaction.get("amount"));
         }
         List<Map<String, Object>> months = new ArrayList<>();
         grouped.forEach((
             month,
             amounts) -> months.add(Map.of("month", month.toString(), "income", amounts[0],
-                "expenses", amounts[1], "net", amounts[0].subtract(amounts[1]))));
+                "expenses", amounts[1], "financing", amounts[2],
+                "net", amounts[0].add(amounts[2]).subtract(amounts[1]))));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("company", repository.company(user.company()));
         result.put("months", months);
@@ -54,15 +57,18 @@ public class Finance implements FinanceUseCases {
         for (var row : repository.monthlyTotals(user.company())) {
             var month = YearMonth.of(((Number) row.get("year_number")).intValue(),
                 ((Number) row.get("month_number")).intValue());
-            var pair = grouped.computeIfAbsent(month, ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
-            int index = "INCOME".equals(row.get("type")) ? 0 : 1;
+            var pair = grouped.computeIfAbsent(month,
+                ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+            String type = (String) row.get("type");
+            int index = "INCOME".equals(type) ? 0 : "EXPENSE".equals(type) ? 1 : 2;
             pair[index] = pair[index].add((BigDecimal) row.get("amount"));
         }
         var months = new ArrayList<Map<String, Object>>();
         grouped.forEach((
             month,
             pair) -> months.add(Map.of("month", month.toString(),
-                "income", pair[0], "expenses", pair[1], "net", pair[0].subtract(pair[1]))));
+                "income", pair[0], "expenses", pair[1], "financing", pair[2],
+                "net", pair[0].add(pair[2]).subtract(pair[1]))));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("company", repository.company(user.company()));
         result.put("months", months);
@@ -99,7 +105,7 @@ public class Finance implements FinanceUseCases {
         int size
     ) {
         user.client();
-        if (!List.of("ALL", "INCOME", "EXPENSE").contains(type))
+        if (!List.of("ALL", "INCOME", "EXPENSE", "FINANCING").contains(type))
             throw DomainException.bad("INVALID_TYPE", "Неизвестный тип операции");
         LocalDate start, end;
         try {

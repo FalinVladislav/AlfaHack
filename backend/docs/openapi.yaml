@@ -6,7 +6,8 @@ info:
     Сначала выполните POST /auth/sessions с логином stable, gap или staff и паролем Alfa2026!.
     Браузер сохраняет HttpOnly cookie cabinet_session. Swagger UI автоматически получает
     CSRF-токен из ответа входа или GET /me и передаёт X-CSRF-Token в изменяющих запросах.
-    После перезагрузки Swagger UI существующая сессия продолжает работать.
+    После перезагрузки Swagger UI существующая сессия продолжает работать в течение 24 часов.
+    Сервер отклоняет просроченный токен даже при повторной передаче cookie.
     Для операций с Idempotency-Key указывайте уникальный ключ для нового действия;
     при повторе того же действия используйте прежний ключ.
 servers:
@@ -234,14 +235,14 @@ paths:
   /finance/summary:
     get:
       summary: Краткая финансовая сводка для клиентского кабинета
-      description: Компания, месячные суммы, кредиты, продукты и потребности без полного массива операций. История запрашивается через /finance/activity.
+      description: Компания, месячные доходы, расходы и отдельно полученное финансирование, кредиты, продукты и потребности без полного массива операций. История запрашивается через /finance/activity.
       responses:
         '200': {$ref: '#/components/responses/ok'}
         '403': {$ref: '#/components/responses/Error'}
   /finance/overview:
     get:
       summary: Финансовый профиль компании, операции, остатки и синтетические потребности
-      description: Только для клиента. Данные ограничены компанией текущей сессии. months содержит доходы, расходы и чистый поток по завершённым месяцам.
+      description: Только для клиента. Данные ограничены компанией текущей сессии. months содержит доходы, расходы, финансирование и чистый денежный поток; кредитная выдача не считается выручкой.
       responses:
         '200':
           description: Финансовая сводка
@@ -263,17 +264,17 @@ paths:
   /finance/activity:
     get:
       summary: Фильтрованные итоги и страница операций компании
-      description: Все суммы, месяцы, категории и страница операций используют один фильтр. Остаток определяется на конец периода и не меняется от типа операции. Только для клиента своей компании.
+      description: Все суммы, месяцы, категории и страница операций используют один фильтр. Выдача кредита имеет тип FINANCING и показывается отдельно от операционного дохода; net включает её как движение средств. Остаток определяется на конец периода и не меняется от типа операции. Только для клиента своей компании.
       parameters:
         - {name: from, in: query, schema: {type: string, format: date}}
         - {name: to, in: query, schema: {type: string, format: date}}
-        - {name: type, in: query, schema: {type: string, enum: [ALL, INCOME, EXPENSE], default: ALL}}
+        - {name: type, in: query, schema: {type: string, enum: [ALL, INCOME, EXPENSE, FINANCING], default: ALL}}
         - {name: category, in: query, schema: {type: string}}
         - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
         - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 12}}
       responses:
         '200':
-          description: items, total, page, size, income, expenses, net, months, expense_categories, available_categories, balance, balance_date и balances
+          description: items, total, page, size, income, expenses, financing, net, months, expense_categories, available_categories, balance, balance_date и balances
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AnyObject'}
@@ -281,6 +282,7 @@ paths:
   /finance/credit-load:
     get:
       summary: Кредиты и ближайшие платежи с независимыми страницами
+      description: business_today содержит текущую дату банка, с которой становится доступна оплата очередного взноса.
       parameters:
         - {name: search, in: query, schema: {type: string}}
         - {name: source, in: query, schema: {type: string, enum: [ALL, EXISTING, ISSUED], default: ALL}}
@@ -315,7 +317,7 @@ paths:
   /finance/loans/{source}/{id}/payments:
     post:
       summary: Имитировать платёж по ближайшему взносу кредита
-      description: Атомарно обновляет долг, счёт, график и историю операций. Повтор с тем же Idempotency-Key возвращает исходный платёж. Реальное списание не производится.
+      description: Атомарно обновляет долг, счёт, график и историю операций. Дата очередного взноса должна наступить; досрочное погашение этим методом не предусмотрено. Повтор с тем же Idempotency-Key возвращает исходный платёж. Реальное списание не производится.
       security: [{sessionCookie: [], csrfHeader: []}]
       parameters:
         - {name: source, in: path, required: true, schema: {type: string, enum: [EXISTING, ISSUED]}}
@@ -526,7 +528,7 @@ paths:
       parameters:
         - {name: purpose, in: query, required: true, schema: {type: string, enum: [EXPANSION, WORKING_CAPITAL, CASH_GAP]}}
         - {name: product_id, in: query, schema: {type: string}, description: Ограничить ответ одним продуктом соответствующего назначения}
-        - {name: needed_by, in: query, schema: {type: string, format: date}, description: Дата получения от завтрашней демодаты до 120 дней вперёд; по умолчанию завтра}
+        - {name: needed_by, in: query, schema: {type: string, format: date}, description: Дата получения от завтрашнего дня банка до 120 дней вперёд; по умолчанию завтра. При отправке заявки дата проверяется повторно.}
       responses:
         '200':
           description: Точные диапазоны по каждому сроку и продукту
@@ -989,7 +991,7 @@ paths:
                 internal_reason: {type: string}
                 client_message: {type: string}
                 divergence_reason: {type: string}
-                expires_at: {type: string, format: date-time}
+                expires_at: {type: string, format: date-time, description: 'ISO 8601 с часовым поясом; например 2026-10-30T18:00:00+03:00'}
       responses:
         '200': {$ref: '#/components/responses/ok'}
         '409': {$ref: '#/components/responses/conflict'}

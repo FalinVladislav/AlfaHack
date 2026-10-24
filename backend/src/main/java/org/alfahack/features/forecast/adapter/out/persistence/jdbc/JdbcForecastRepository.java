@@ -43,8 +43,13 @@ public class JdbcForecastRepository implements ForecastRepository {
         LocalDate through
     ) {
         return rows(db.queryForList(
-            "SELECT event_date,amount,kind,source FROM ledger_events WHERE company_id=? AND event_date>? AND event_date<=? AND kind<>'DISBURSEMENT' ORDER BY event_date",
-            companyId, after, through));
+            "SELECT e.event_date,e.amount,e.kind,e.source FROM ledger_events e"
+                + " WHERE e.company_id=? AND e.event_date>? AND e.event_date<=? AND e.kind<>'DISBURSEMENT'"
+                + " UNION ALL SELECT s.due_date,-s.payment,'LOAN_PAYMENT',CONCAT('Кредит ',s.loan_id)"
+                + " FROM loan_schedule s JOIN loans l ON l.id=s.loan_id"
+                + " WHERE l.company_id=? AND s.paid_at IS NULL AND s.due_date>? AND s.due_date<=?"
+                + " ORDER BY event_date",
+            companyId, after, through, companyId, after, through));
     }
 
     @Override
@@ -68,8 +73,6 @@ public class JdbcForecastRepository implements ForecastRepository {
         LocalDate after,
         LocalDate through
     ) {
-        return rows(db.queryForList(
-            "SELECT event_date,amount FROM ledger_events WHERE company_id=? AND event_date>? AND event_date<=? AND kind<>'DISBURSEMENT'",
-            companyId, after, through));
+        return plannedEvents(companyId, after, through);
     }
 }

@@ -95,27 +95,29 @@ export default function Loans({ finance, today, revision, run, busy }) {
     }
   }
   const pay = async () => {
-    try {
-      setActionError('')
-      const response = await run(() =>
+    setActionError('')
+    const response = await run(
+      () =>
         post(
           `/finance/loans/${paying.source}/${paying.id}/payments`,
           { expected_due_date: paying.next_payment_date },
           paymentKey,
         ),
-      )
-      if (response) {
-        setPaying(null)
-        refresh()
-      }
-    } catch (cause) {
-      setActionError(cause.message)
+      (cause) => setActionError(cause.message),
+    )
+    if (response) {
+      setPaying(null)
+      refresh()
     }
   }
   const loans = result?.loans || { items: [], total: 0, page: 1, size: 8 }
   const payments = result?.payments || { items: [], total: 0, page: 1, size: 8 }
   const monthly = Number(result?.summary?.monthly || 0)
-  const income = Number(finance?.months?.at(-1)?.income || 0)
+  const completed = finance?.months
+    ?.filter((month) => month.month < (result?.business_today || today || '').slice(0, 7))
+    .at(-1)
+  const income = Number(completed?.income || 0)
+  const canPay = (loan) => loan.next_payment_date <= result?.business_today
   return (
     <section className="loans-page">
       <div className="page-heading">
@@ -200,8 +202,8 @@ export default function Loans({ finance, today, revision, run, busy }) {
                 <span>Ежемесячные платежи</span>
                 <strong>{money(monthly)}</strong>
                 <small>
-                  {income ? percent(monthly / income) : 'Нет сведений'} от последнего месячного
-                  дохода
+                  {income ? percent(monthly / income) : 'Нет сведений'} от дохода за последний
+                  завершённый месяц
                 </small>
               </div>
               <div className="card peach">
@@ -209,7 +211,7 @@ export default function Loans({ finance, today, revision, run, busy }) {
                 <strong>
                   {payments.items[0] ? date(payments.items[0].next_payment_date) : 'Нет платежей'}
                 </strong>
-                <small>По состоянию на {date(today)}</small>
+                <small>По состоянию на {date(result?.business_today || today)}</small>
               </div>
             </div>
             <section>
@@ -262,7 +264,12 @@ export default function Loans({ finance, today, revision, run, busy }) {
                             >
                               Назвать
                             </button>
-                            <button className="secondary compact" onClick={() => openPay(loan)}>
+                            <button
+                              className="secondary compact"
+                              disabled={busy || !canPay(loan)}
+                              title={canPay(loan) ? '' : 'Оплата доступна с даты платежа'}
+                              onClick={() => openPay(loan)}
+                            >
                               Оплатить
                             </button>
                           </td>
@@ -303,9 +310,15 @@ export default function Loans({ finance, today, revision, run, busy }) {
                     <div>
                       <strong>{title(loan)}</strong>
                       <small>Плановый платёж · {date(loan.next_payment_date)}</small>
+                      {!canPay(loan) && <small>Оплата доступна с даты платежа</small>}
                     </div>
                     <strong className="payment-amount">{money(loan.monthly_payment)}</strong>
-                    <button className="secondary compact" onClick={() => openPay(loan)}>
+                    <button
+                      className="secondary compact"
+                      disabled={busy || !canPay(loan)}
+                      title={canPay(loan) ? '' : 'Оплата доступна с даты платежа'}
+                      onClick={() => openPay(loan)}
+                    >
                       Оплатить
                     </button>
                   </div>

@@ -56,7 +56,7 @@ public class SyntheticProfiles implements org.alfahack.features.scoring.port.Pro
         };
         Profile result = CASES.get(canonical);
         if (result == null)
-            throw DomainException.bad("UNKNOWN_PROFILE", "Неизвестный синтетический профиль");
+            throw DomainException.bad("UNKNOWN_PROFILE", "Неизвестный профиль бизнеса");
         return result;
     }
 

@@ -24,6 +24,7 @@ management:
         include: health,info
 app:
   demo-today: ${DEMO_TODAY:2026-10-21}
+  business-zone: ${BUSINESS_ZONE:Europe/Moscow}
   secure-cookie: ${SECURE_COOKIE:false}
   model-api:
     url: ${MODEL_API_URL:}

@@ -70,8 +70,10 @@ CREATE TABLE IF NOT EXISTS loan_payments (
     UNIQUE(account_key,request_key), UNIQUE(source,loan_id,due_date)
 );
 ALTER TABLE loan_schedule ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
+UPDATE transactions SET type='FINANCING'
+WHERE type='INCOME' AND id IN (SELECT id FROM ledger_events WHERE kind='DISBURSEMENT');
 INSERT INTO transactions(id,company_id,date,amount,type,category,counterparty_id)
-SELECT e.id,e.company_id,e.event_date,e.amount,'INCOME','Выдача кредита','Банк'
+SELECT e.id,e.company_id,e.event_date,e.amount,'FINANCING','Выдача кредита','Банк'
 FROM ledger_events e WHERE e.kind='DISBURSEMENT'
 AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.id=e.id);
 

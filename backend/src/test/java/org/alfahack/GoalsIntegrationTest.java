@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +32,21 @@ class GoalsIntegrationTest {
     MockMvc mvc;
     @Autowired
     JsonCodec json;
+    @Autowired
+    JdbcTemplate db;
     private final User user = new User("stable", "CLIENT", "STABLE", "test");
+
+    @Test
+    void expiredSessionTokenIsRejectedByServer() throws Exception {
+        var response = mvc.perform(post("/api/v1/auth/sessions").contentType("application/json")
+            .content("{\"login\":\"stable\",\"password\":\"Alfa2026!\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse();
+        var cookie = response.getCookie("cabinet_session");
+        mvc.perform(get("/api/v1/me").cookie(cookie)).andExpect(status().isOk());
+        db.update("UPDATE sessions SET created_at=? WHERE token=?",
+            java.time.LocalDateTime.now().minusHours(25), cookie.getValue());
+        mvc.perform(get("/api/v1/me").cookie(cookie)).andExpect(status().isUnauthorized());
+    }
 
     @Test
     void confirmedGoalIsStoredAndSurvivesParameterChanges() {

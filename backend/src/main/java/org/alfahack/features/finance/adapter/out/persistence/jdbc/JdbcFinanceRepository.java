@@ -74,23 +74,29 @@ public class JdbcFinanceRepository implements FinanceRepository {
         var daily = rows(db.queryForList("SELECT date,type,SUM(amount) AS amount FROM transactions"
             + where + " GROUP BY date,type ORDER BY date", args.toArray()));
         var grouped = new TreeMap<YearMonth, BigDecimal[]>();
-        BigDecimal income = BigDecimal.ZERO, expenses = BigDecimal.ZERO;
+        BigDecimal income = BigDecimal.ZERO, expenses = BigDecimal.ZERO, financing = BigDecimal.ZERO;
         for (var entry : daily) {
             var amount = (BigDecimal) entry.get("amount");
-            boolean incoming = "INCOME".equals(entry.get("type"));
-            if (incoming)
+            String movementType = (String) entry.get("type");
+            if ("INCOME".equals(movementType))
                 income = income.add(amount);
             else
-                expenses = expenses.add(amount);
+                if ("EXPENSE".equals(movementType))
+                    expenses = expenses.add(amount);
+                else
+                    if ("FINANCING".equals(movementType))
+                        financing = financing.add(amount);
             var pair = grouped.computeIfAbsent(YearMonth.from((LocalDate) entry.get("date")),
-                ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
-            pair[incoming ? 0 : 1] = pair[incoming ? 0 : 1].add(amount);
+                ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+            int index = "INCOME".equals(movementType) ? 0 : "EXPENSE".equals(movementType) ? 1 : 2;
+            pair[index] = pair[index].add(amount);
         }
         var months = new ArrayList<Map<String, Object>>();
         grouped.forEach((
             month,
             pair) -> months.add(Map.of("month", month.toString(),
-                "income", pair[0], "expenses", pair[1], "net", pair[0].subtract(pair[1]))));
+                "income", pair[0], "expenses", pair[1], "financing", pair[2],
+                "net", pair[0].add(pair[2]).subtract(pair[1]))));
         var categories = rows(db.queryForList("SELECT category,SUM(amount) AS amount FROM transactions"
             + where + " AND type='EXPENSE' GROUP BY category ORDER BY amount DESC", args.toArray()));
         StringBuilder categoryFilter = new StringBuilder(" WHERE company_id=? AND type='EXPENSE'");
@@ -126,7 +132,8 @@ public class JdbcFinanceRepository implements FinanceRepository {
         result.put("size", size);
         result.put("income", income);
         result.put("expenses", expenses);
-        result.put("net", income.subtract(expenses));
+        result.put("financing", financing);
+        result.put("net", income.add(financing).subtract(expenses));
         result.put("months", months);
         result.put("expense_categories", categories);
         result.put("available_categories", availableCategories);

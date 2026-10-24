@@ -405,7 +405,7 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     ) {
         db.update(
             "INSERT INTO transactions(id,company_id,date,amount,type,category,counterparty_id) VALUES (?,?,?,?,?,?,?)",
-            eventId, companyId, date, amount, "INCOME", "Выдача кредита", "Банк");
+            eventId, companyId, date, amount, "FINANCING", "Выдача кредита", "Банк");
         BigDecimal balance = db.queryForObject("SELECT balance FROM companies WHERE id=?", BigDecimal.class, companyId);
         if (db.update("UPDATE balances SET balance=? WHERE company_id=? AND date=?", balance, companyId, date) == 0)
             db.update("INSERT INTO balances(company_id,date,balance) VALUES (?,?,?)", companyId, date, balance);
@@ -415,7 +415,9 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     public List<Map<String, Object>> loans(
         String companyId
     ) {
-        return rows(db.queryForList("SELECT * FROM loans WHERE company_id=? ORDER BY created_at DESC", companyId));
+        return rows(db.queryForList(
+            "SELECT l.*,a.product_id,a.duration_days FROM loans l JOIN applications a ON a.id=l.application_id WHERE l.company_id=? ORDER BY l.created_at DESC",
+            companyId));
     }
 
     @Override
@@ -513,7 +515,7 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     @Override
     public List<Map<String, Object>> existingLoans(String companyId) {
         return rows(db.queryForList(
-            "SELECT id,name,remaining_debt,monthly_payment,rate,next_payment_date,end_date FROM existing_loans WHERE company_id=? ORDER BY id",
+            "SELECT id,name,remaining_debt,monthly_payment,rate,next_payment_date,end_date FROM existing_loans WHERE company_id=? AND remaining_debt>0 ORDER BY id",
             companyId));
     }
 
@@ -541,7 +543,7 @@ public class JdbcApplicationsRepository implements ApplicationsRepository {
     @Override
     public List<Map<String, Object>> schedule(String loanId) {
         return rows(db.queryForList(
-            "SELECT installment,due_date,principal,interest,payment FROM loan_schedule WHERE loan_id=? ORDER BY installment",
+            "SELECT installment,due_date,principal,interest,payment,paid_at FROM loan_schedule WHERE loan_id=? ORDER BY installment",
             loanId));
     }
 

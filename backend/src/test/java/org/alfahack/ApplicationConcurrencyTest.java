@@ -44,7 +44,8 @@ class ApplicationConcurrencyTest {
         var draft = drafts.create(client);
         String id = (String) draft.get("id");
         draft = drafts.update(client, id, Map.of("expected_version", draft.get("version"),
-            "purpose", "EXPANSION", "amount", "1000000", "term_months", 24, "needed_by", "2026-11-01"));
+            "purpose", "EXPANSION", "amount", "1000000", "term_months", 24, "needed_by",
+            java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).plusDays(10).toString()));
         var options = (List<Map<String, Object>>) drafts.quote(client, id,
             Map.of("expected_version", draft.get("version"))).get("options");
         var quote = options.stream().filter(item -> "DEVELOPMENT".equals(item.get("product_id"))).findFirst()
@@ -93,7 +94,8 @@ class ApplicationConcurrencyTest {
         body.put("calculation_token", preview.get("calculation_token"));
         body.put("internal_reason", "Финансовые показатели проверены, платёж укладывается в лимит");
         body.put("client_message", "Кредит одобрен на предложенных условиях");
-        body.put("expires_at", LocalDateTime.now().plusDays(7).toString());
+        body.put("expires_at", java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
+            .plusDays(7).toString());
         return body;
     }
 

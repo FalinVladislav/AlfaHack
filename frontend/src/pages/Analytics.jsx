@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api, date } from '../api'
 import { Empty, Loading, money, monthName } from '../components/Ui'
 
@@ -14,7 +14,7 @@ function initial() {
     ]),
   )
   if (!['3', '6', '12', 'all', 'custom'].includes(filters.period)) filters.period = '6'
-  if (!['ALL', 'INCOME', 'EXPENSE'].includes(filters.type)) filters.type = 'ALL'
+  if (!['ALL', 'INCOME', 'EXPENSE', 'FINANCING'].includes(filters.type)) filters.type = 'ALL'
   return filters
 }
 function periodStart(today, months) {
@@ -25,36 +25,60 @@ function periodStart(today, months) {
   return day.toISOString().slice(0, 10)
 }
 function CashChart({ months }) {
+  const chartRef = useRef(null)
+  const [size, setSize] = useState({ width: 920, height: 300 })
+  useEffect(() => {
+    const node = chartRef.current
+    if (!node) return
+    const observer = new ResizeObserver(() => {
+      const next = { width: Math.round(node.clientWidth), height: Math.round(node.clientHeight) }
+      setSize((current) =>
+        current.width === next.width && current.height === next.height ? current : next,
+      )
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [months.length])
   if (!months.length) return <p className="muted">За выбранный период операций нет.</p>
-  const max = Math.max(1, ...months.flatMap((m) => [Number(m.income), Number(m.expenses)]))
-  const x = (i) => 45 + (i * 830) / Math.max(1, months.length - 1)
-  const y = (n) => 210 - (Number(n) / max) * 175
+  const max = Math.max(
+    1,
+    ...months.flatMap((m) => [Number(m.income), Number(m.expenses), Number(m.financing)]),
+  )
+  const x = (i) => 45 + (i * Math.max(1, size.width - 90)) / Math.max(1, months.length - 1)
+  const y = (n) => size.height - 48 - (Number(n) / max) * Math.max(1, size.height - 83)
+  const labelStep = Math.max(1, Math.ceil(months.length / Math.max(1, (size.width - 60) / 45)))
   return (
     <svg
+      ref={chartRef}
       className="cash-chart"
-      viewBox="0 0 920 260"
+      viewBox={`0 0 ${size.width} ${size.height}`}
       role="img"
-      aria-label="Доходы и расходы по месяцам"
+      aria-label="Доходы, расходы и финансирование по месяцам"
     >
-      {['income', 'expenses'].map((field) => (
+      {['income', 'expenses', 'financing'].map((field) => (
         <polyline
           key={field}
           fill="none"
-          stroke={field === 'income' ? '#00a976' : '#ef927b'}
+          stroke={field === 'income' ? '#00a976' : field === 'expenses' ? '#ef927b' : '#6373c8'}
           strokeWidth="3"
           points={months.map((m, i) => `${x(i)},${y(m[field])}`).join(' ')}
         />
       ))}
       {months.map((m, i) => (
         <g key={m.month}>
-          <text x={x(i)} y="245" textAnchor="middle">
-            {monthName(m.month).slice(0, 3)}
-          </text>
+          {(i % labelStep === 0 || i === months.length - 1) && (
+            <text x={x(i)} y={size.height - 12} textAnchor="middle">
+              {monthName(m.month).slice(0, 3)}
+            </text>
+          )}
           <circle cx={x(i)} cy={y(m.income)} r="4" fill="#00a976">
             <title>Доходы: {money(m.income)}</title>
           </circle>
           <circle cx={x(i)} cy={y(m.expenses)} r="4" fill="#ef927b">
             <title>Расходы: {money(m.expenses)}</title>
+          </circle>
+          <circle cx={x(i)} cy={y(m.financing)} r="4" fill="#6373c8">
+            <title>Финансирование: {money(m.financing)}</title>
           </circle>
         </g>
       ))}
@@ -67,7 +91,7 @@ export default function Analytics({ dashboard }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
-  const today = dashboard?.demo_today || ''
+  const today = dashboard?.business_today || dashboard?.demo_today || ''
   const from = filters.period === 'custom' ? filters.from : periodStart(today, filters.period)
   const to = filters.period === 'custom' ? filters.to : today
   const change = (values) => setFilters((old) => ({ ...old, ...values, page: 1 }))
@@ -155,13 +179,14 @@ export default function Analytics({ dashboard }) {
             <option value="ALL">Все</option>
             <option value="INCOME">Поступления</option>
             <option value="EXPENSE">Расходы</option>
+            <option value="FINANCING">Финансирование</option>
           </select>
         </label>
         <label>
           Категория расходов
           <select
             value={filters.category}
-            disabled={filters.type === 'INCOME'}
+            disabled={filters.type === 'INCOME' || filters.type === 'FINANCING'}
             onChange={(e) =>
               change({ category: e.target.value, type: e.target.value ? 'EXPENSE' : filters.type })
             }
@@ -209,6 +234,10 @@ export default function Analytics({ dashboard }) {
                 <span>Доходы за период</span>
                 <strong>{money(activity.income)}</strong>
               </div>
+              <div className="card blue">
+                <span>Полученное финансирование</span>
+                <strong>{money(activity.financing)}</strong>
+              </div>
               <div className="card pink">
                 <span>Расходы за период</span>
                 <strong>{money(activity.expenses)}</strong>
@@ -233,6 +262,10 @@ export default function Analytics({ dashboard }) {
                   <span>
                     <i className="expense-dot" />
                     Расходы
+                  </span>
+                  <span>
+                    <i className="financing-dot" />
+                    Финансирование
                   </span>
                 </div>
               </div>
@@ -317,8 +350,8 @@ export default function Analytics({ dashboard }) {
                           <td>{date(item.date)}</td>
                           <td>{item.category}</td>
                           <td className="muted">{item.counterparty_id}</td>
-                          <td className={`numeric ${item.type === 'INCOME' ? 'green' : ''}`}>
-                            {item.type === 'INCOME' ? '+' : '−'}
+                          <td className={`numeric ${item.type !== 'EXPENSE' ? 'green' : ''}`}>
+                            {item.type === 'EXPENSE' ? '−' : '+'}
                             {money(item.amount)}
                           </td>
                         </tr>

@@ -3,8 +3,11 @@ package org.alfahack.features.applications.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +42,7 @@ public class Applications implements ApplicationUseCases {
     private final RiskAssessment scoring;
     private final JsonCodec json;
     private final LocalDate today;
+    private final ZoneId businessZone;
 
     public Applications(
         UnitOfWork unitOfWork,
@@ -48,7 +52,8 @@ public class Applications implements ApplicationUseCases {
         RiskAssessment scoring,
         ProfileCatalog profiles,
         JsonCodec json,
-        String today
+        String today,
+        String businessZone
     ) {
         this.unitOfWork = unitOfWork;
         this.repository = repository;
@@ -57,6 +62,7 @@ public class Applications implements ApplicationUseCases {
         this.scoring = scoring;
         this.json = json;
         this.today = LocalDate.parse(today);
+        this.businessZone = ZoneId.of(businessZone);
     }
 
     public List<Map<String, Object>> list(User user) {
@@ -122,7 +128,7 @@ public class Applications implements ApplicationUseCases {
         Map<String, Object> company = repository.company((String) a.get("company_id"));
         out.put("request", request);
         out.put("company", company);
-        out.put("obligations", repository.existingLoans((String) a.get("company_id")));
+        out.put("obligations", obligations((String) a.get("company_id")));
         if (staff)
             out.put("events", repository.events(id));
         else {
@@ -145,7 +151,7 @@ public class Applications implements ApplicationUseCases {
         out.put("offer", offer);
         out.put("offer_version", offer == null ? 0 : offer.get("version"));
         if (offer != null) {
-            Map<String, Object> calculation = products.calculate(products.get((String) offer.get("product_id")),
+            Map<String, Object> calculation = products.calculate(offerProduct(offer),
                 (BigDecimal) offer.get("amount"), (Integer) offer.get("term_months"),
                 (Integer) offer.get("duration_days"));
             out.put("offer_schedule", calculation.get("schedule"));
@@ -236,6 +242,8 @@ public class Applications implements ApplicationUseCases {
                 throw DomainException.conflict("QUOTE_STALE", "Расчёт устарел. Пересчитайте условия");
             if (d.get("needed_by") == null)
                 throw DomainException.bad("NEEDED_BY_REQUIRED", "Укажите дату, к которой нужны деньги");
+            if (((LocalDate) d.get("needed_by")).isBefore(LocalDate.now(businessZone).plusDays(1)))
+                throw DomainException.conflict("QUOTE_STALE", "Дата получения прошла. Пересчитайте условия");
             LocalDateTime now = LocalDateTime.now();
             if (repository.submitDraft(now, draftId, user.company(), expected) != 1)
                 throw DomainException.conflict("QUOTE_STALE", "Черновик изменился. Пересчитайте условия");
@@ -337,8 +345,9 @@ public class Applications implements ApplicationUseCases {
                 if (previous.equals(month))
                     priorRevenue = priorRevenue.add(value);
             } else
-                if (recent.equals(month))
-                    expenses = expenses.add(value);
+                if ("EXPENSE".equals(row.get("type")))
+                    if (recent.equals(month))
+                        expenses = expenses.add(value);
         }
         if (revenue.signum() <= 0 || priorRevenue.signum() <= 0)
             return null;
@@ -353,6 +362,25 @@ public class Applications implements ApplicationUseCases {
             (BigDecimal) company.get("current_liabilities"), (BigDecimal) company.get("collateral_value"),
             number(company.get("overdue_days")),
             true, Objects.toString(company.get("credit_history"), "UNKNOWN"));
+    }
+
+    private List<Map<String, Object>> obligations(String companyId) {
+        List<Map<String, Object>> result = new ArrayList<>(repository.existingLoans(companyId));
+        for (var loan : repository.loans(companyId)) {
+            BigDecimal balance = (BigDecimal) loan.get("balance");
+            if (balance.signum() <= 0)
+                continue;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", loan.get("id"));
+            item.put("name", products.get((String) loan.get("product_id")).name());
+            item.put("remaining_debt", balance);
+            item.put("monthly_payment", loan.get("next_payment_amount"));
+            item.put("next_payment_date", loan.get("next_payment_date"));
+            item.put("duration_days", loan.get("duration_days"));
+            item.put("source", "ISSUED");
+            result.add(item);
+        }
+        return result;
     }
 
     public Map<String, Object> claim(
@@ -463,11 +491,12 @@ public class Applications implements ApplicationUseCases {
                 case "COUNTEROFFER" -> "COUNTEROFFER";
                 default -> "REJECTED";
             };
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
             LocalDateTime expiry = null;
             if (!"REJECT".equals(type)) {
                 try {
-                    expiry = LocalDateTime.parse(Util.required(body, "expires_at"));
+                    String supplied = Util.required(body, "expires_at");
+                    expiry = OffsetDateTime.parse(supplied).atZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
                 } catch (Exception ex) {
                     throw DomainException.bad("INVALID_EXPIRY", "Укажите срок действия предложения");
                 }
@@ -536,7 +565,7 @@ public class Applications implements ApplicationUseCases {
             Map<String, Object> offer = latestOffer(id);
             if (!offerId.equals(offer.get("id")) || version != number(offer.get("version")))
                 throw DomainException.conflict("OFFER_STALE", "Предложение изменилось. Обновите заявку");
-            if (!((LocalDateTime) offer.get("expires_at")).isAfter(LocalDateTime.now()))
+            if (!((LocalDateTime) offer.get("expires_at")).isAfter(LocalDateTime.now(ZoneOffset.UTC)))
                 throw DomainException.conflict("OFFER_EXPIRED", "Срок предложения истёк");
             if (repository.move(id, (String) a.get("status"), "OFFER_ACCEPTED", number(a.get("version")),
                 null, null, LocalDateTime.now()) != 1)
@@ -632,28 +661,34 @@ public class Applications implements ApplicationUseCases {
             Map<String, Object> offer = latestOffer(id);
             if (!Objects.equals(contracts.getFirst().get("offer_id"), offer.get("id")))
                 throw DomainException.conflict("OFFER_STALE", "Договор не соответствует предложению");
-            Product product = products.get((String) offer.get("product_id"));
+            Product product = offerProduct(offer);
             BigDecimal amount = (BigDecimal) offer.get("amount");
             Integer months = (Integer) offer.get("term_months"), days = (Integer) offer.get("duration_days");
             Map<String, Object> calc = products.calculate(product, amount, months, days);
+            if (((BigDecimal) calc.get("total_repay")).compareTo((BigDecimal) offer.get("total_repay")) != 0
+                || ((BigDecimal) calc.get("monthly_payment")).compareTo(
+                    (BigDecimal) offer.get("monthly_payment")) != 0)
+                throw DomainException.conflict("OFFER_CALCULATION_CHANGED",
+                    "График не совпадает с принятыми условиями. Обратитесь в банк");
             String loanId = Util.id();
             List<?> schedule = (List<?>) calc.get("schedule");
             Map<?, ?> first = (Map<?, ?>) schedule.getFirst();
-            LocalDate firstDue = days == null ? today.plusMonths(1) : today.plusDays(days);
+            LocalDate issuedOn = LocalDate.now(businessZone);
+            LocalDate firstDue = days == null ? issuedOn.plusMonths(1) : issuedOn.plusDays(days);
             repository.insertLoan(loanId, id, user.company(), amount, amount, firstDue,
                 (BigDecimal) first.get("payment"), LocalDateTime.now());
             for (Object row : schedule) {
                 Map<?, ?> period = (Map<?, ?>) row;
                 int installment = number(period.get("period"));
-                LocalDate due = days == null ? today.plusMonths(installment) : today.plusDays(days);
+                LocalDate due = days == null ? issuedOn.plusMonths(installment) : issuedOn.plusDays(days);
                 repository.insertSchedule(loanId, installment, due, (BigDecimal) period.get("principal"),
                     (BigDecimal) period.get("interest"), (BigDecimal) period.get("payment"));
             }
             String disbursementId = Util.id();
-            repository.insertLedgerEvent(disbursementId, user.company(), today, amount, "DISBURSEMENT",
+            repository.insertLedgerEvent(disbursementId, user.company(), issuedOn, amount, "DISBURSEMENT",
                 "Выдача кредита " + loanId);
             repository.creditCompany(amount, user.company());
-            repository.recordDisbursement(disbursementId, user.company(), today, amount);
+            repository.recordDisbursement(disbursementId, user.company(), issuedOn, amount);
             if (repository.move(id, "SIGNED", "DISBURSED", number(a.get("version")), null, null,
                 LocalDateTime.now()) != 1)
                 throw DomainException.conflict("STATE_CHANGED", "Выдача уже выполнена");
@@ -693,7 +728,8 @@ public class Applications implements ApplicationUseCases {
         body.put("term_months", request.get("term_months"));
         body.put("duration_days", request.get("duration_days"));
         LocalDate need = (LocalDate) request.get("needed_by");
-        body.put("needed_by", need != null && need.isAfter(today) ? need : today.plusDays(10));
+        LocalDate requestedOn = LocalDate.now(businessZone);
+        body.put("needed_by", need != null && need.isAfter(requestedOn) ? need : requestedOn.plusDays(10));
         body.put("product_id", request.get("product_id"));
         body.put("goal_text", request.get("goal_text"));
         return drafts.update(user, (String) draft.get("id"), body);
@@ -746,6 +782,12 @@ public class Applications implements ApplicationUseCases {
         return rows.getFirst();
     }
 
+    private Product offerProduct(Map<String, Object> offer) {
+        Product current = products.get((String) offer.get("product_id"));
+        return new Product(current.id(), current.name(), current.purpose(), current.min(), current.max(),
+            current.minTerm(), current.maxTerm(), (BigDecimal) offer.get("annual_rate"), current.unit());
+    }
+
     private void expire(
         User user,
         String id
@@ -754,7 +796,8 @@ public class Applications implements ApplicationUseCases {
         if (!List.of("APPROVED", "COUNTEROFFER").contains(a.get("status")))
             return;
         var offers = repository.offers(id);
-        if (offers.isEmpty() || ((LocalDateTime) offers.getFirst().get("expires_at")).isAfter(LocalDateTime.now()))
+        if (offers.isEmpty() || ((LocalDateTime) offers.getFirst().get("expires_at"))
+            .isAfter(LocalDateTime.now(ZoneOffset.UTC)))
             return;
         unitOfWork.required(() -> {
             if (repository.move(id, (String) a.get("status"), "EXPIRED", number(a.get("version")),

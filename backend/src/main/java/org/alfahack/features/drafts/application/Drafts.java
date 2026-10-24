@@ -3,6 +3,7 @@ package org.alfahack.features.drafts.application;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,7 +24,7 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
     private final ProductCatalog products;
     private final FinancingLimitUseCases limits;
     private final org.alfahack.features.goals.port.GoalUseCases goals;
-    private final LocalDate today;
+    private final ZoneId businessZone;
 
     public Drafts(
         UnitOfWork unitOfWork,
@@ -31,14 +32,14 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
         ProductCatalog products,
         FinancingLimitUseCases limits,
         org.alfahack.features.goals.port.GoalUseCases goals,
-        String today
+        String businessZone
     ) {
         this.unitOfWork = unitOfWork;
         this.repository = repository;
         this.products = products;
         this.limits = limits;
         this.goals = goals;
-        this.today = LocalDate.parse(today);
+        this.businessZone = ZoneId.of(businessZone);
     }
 
     public Map<String, Object> get(
@@ -101,6 +102,12 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
             LocalDate date = body.containsKey("needed_by")
                 ? (body.get("needed_by") == null ? null : Util.date(body.get("needed_by"), "needed_by"))
                 : row.get("needed_by") == null ? null : ((LocalDate) row.get("needed_by"));
+            if (date != null) {
+                LocalDate bankToday = LocalDate.now(businessZone);
+                if (date.isBefore(bankToday.plusDays(1)) || date.isAfter(bankToday.plusDays(120)))
+                    throw DomainException.bad("INVALID_FINANCING_DATE",
+                        "Выберите дату получения в ближайшие 120 дней");
+            }
             String product = body.containsKey("product_id")
                 ? Util.string(body, "product_id")
                 : (String) row.get("product_id");
@@ -157,9 +164,6 @@ public class Drafts implements org.alfahack.features.drafts.port.DraftUseCases {
             String reason = products.reason(p, purpose, amount, months, days);
             if (reason == null && !withinLimits(available, p.id(), amount, p.unit().equals("DAYS") ? days : months))
                 reason = "PERSONAL_LIMIT";
-            if (reason == null && d.get("needed_by") != null
-                && ((LocalDate) d.get("needed_by")).isBefore(today.plusDays(1)))
-                reason = "TOO_LATE";
             Map<String, Object> option = new LinkedHashMap<>();
             option.put("product_id", p.id());
             option.put("name", p.name());

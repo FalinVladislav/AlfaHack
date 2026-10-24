@@ -267,8 +267,7 @@ export default function CreditScenarios({ draftId, quoteId, pending, purpose }) 
             <summary>Данные и допущения расчёта</summary>
             <p>
               Использовано полных месяцев: {data.basis.months}. Средняя выручка:{' '}
-              {money(data.basis.monthly_income)} в месяц. Данные:{' '}
-              {data.basis.data_origin === 'SYNTHETIC' ? 'синтетические' : 'история бизнеса'}.
+              {money(data.basis.monthly_income)} в месяц.
             </p>
             <p>
               Бюджет: {money(data.inputs.project_cost)}. Дополнительная выручка / расходы:{' '}

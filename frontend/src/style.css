@@ -1324,7 +1324,7 @@ details summary {
 }
 .analytics-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 15px;
   margin-bottom: 20px;
 }
@@ -1367,6 +1367,9 @@ details summary {
 }
 .legend .expense-dot {
   background: #ef927b;
+}
+.legend .financing-dot {
+  background: #6373c8;
 }
 .cash-chart {
   width: 100%;

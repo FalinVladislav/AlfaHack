@@ -29,6 +29,8 @@ class FinanceIntegrationTest {
     @Autowired
     CreditAccountUseCases creditAccounts;
     @Autowired
+    org.alfahack.features.forecast.port.ForecastUseCases forecast;
+    @Autowired
     SyntheticFinanceData seed;
     @Autowired
     JdbcTemplate db;
@@ -38,6 +40,18 @@ class FinanceIntegrationTest {
 
     @Autowired
     ApplicationUseCases applications;
+    @Autowired
+    org.alfahack.features.applications.port.ApplicationsRepository applicationRepository;
+
+    @Test
+    @Transactional
+    void repaidExistingLoanIsExcludedFromScoringObligationsAndActiveLoans() {
+        String loanId = (String) applicationRepository.existingLoans("STABLE").getFirst().get("id");
+        db.update("UPDATE existing_loans SET remaining_debt=0 WHERE id=?", loanId);
+        assertTrue(applicationRepository.existingLoans("STABLE").stream()
+            .noneMatch(loan -> loanId.equals(loan.get("id"))));
+        assertTrue(finance.loans(stable).stream().noneMatch(loan -> loanId.equals(loan.get("id"))));
+    }
 
     @Test
     @Transactional
@@ -45,7 +59,8 @@ class FinanceIntegrationTest {
         var draft = drafts.create(stable);
         String draftId = (String) draft.get("id");
         draft = drafts.update(stable, draftId, Map.of("expected_version", draft.get("version"),
-            "purpose", "EXPANSION", "amount", "1000000", "term_months", 24, "needed_by", "2026-11-01"));
+            "purpose", "EXPANSION", "amount", "1000000", "term_months", 24, "needed_by",
+            LocalDate.now(java.time.ZoneId.of("Europe/Moscow")).plusDays(10).toString()));
         var quotes = drafts.quote(stable, draftId, Map.of("expected_version", draft.get("version")));
         var quote = list(quotes, "options").stream()
             .filter(option -> "DEVELOPMENT".equals(option.get("product_id"))).findFirst().orElseThrow();
@@ -61,7 +76,7 @@ class FinanceIntegrationTest {
             "calculation_token", preview.get("calculation_token"), "internal_reason",
             "Проверены финансовые показатели и нагрузка", "client_message",
             "Банк одобрил финансирование на указанных условиях", "expires_at",
-            java.time.LocalDateTime.now().plusDays(7).toString()));
+            java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).plusDays(7).toString()));
         assertEquals("APPROVED", approved.get("status"));
         var offer = (Map<?, ?>) approved.get("offer");
         applications.accept(stable, applicationId, Map.of("offer_id", offer.get("id"),
@@ -71,17 +86,39 @@ class FinanceIntegrationTest {
         var loans = finance.loans(stable);
         assertEquals(3, loans.size());
         var issued = loans.stream().filter(loan -> "ISSUED".equals(loan.get("source"))).findFirst().orElseThrow();
-        assertEquals(LocalDate.of(2028, 10, 21), issued.get("end_date"));
-        assertEquals(LocalDate.of(2026, 11, 21), issued.get("next_payment_date"));
+        LocalDate businessToday = LocalDate.now(java.time.ZoneId.of("Europe/Moscow"));
+        assertEquals(businessToday.plusMonths(24), issued.get("end_date"));
+        assertEquals(businessToday.plusMonths(1), issued.get("next_payment_date"));
+        assertTrue(list(applications.detail(staff, applicationId), "obligations").stream()
+            .anyMatch(loan -> issued.get("id").equals(loan.get("id"))
+                && new BigDecimal("1000000").compareTo((BigDecimal) loan.get("remaining_debt")) == 0),
+            () -> "Issued: " + issued + "; repository loans: " + applicationRepository.loans("STABLE")
+                + "; obligations: " + list(applications.detail(staff, applicationId), "obligations"));
+        var projected = list(forecast.forecast(stable, "6M", "BASE"), "events");
+        assertTrue(projected.stream().anyMatch(event -> "LOAN_PAYMENT".equals(event.get("kind"))
+            && issued.get("next_payment_date").equals(event.get("event_date"))));
+        var issueMonth = finance.summary(stable);
+        assertTrue(list(issueMonth, "months").stream()
+            .anyMatch(month -> businessToday.toString().startsWith(month.get("month").toString())
+                && ((BigDecimal) month.get("financing")).compareTo(new BigDecimal("1000000")) >= 0));
+        assertEquals(DomainException.Kind.CONFLICT, assertThrows(DomainException.class,
+            () -> creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"), "too-early",
+                issued.get("next_payment_date").toString())).kind);
+        db.update("UPDATE loan_schedule SET due_date=? WHERE loan_id=? AND installment=1",
+            businessToday, issued.get("id"));
+        db.update("UPDATE loans SET next_payment_date=? WHERE id=?", businessToday, issued.get("id"));
         var payment = creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"), "issued-first-payment",
-            issued.get("next_payment_date").toString());
+            businessToday.toString());
         assertEquals(payment.get("id"), creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"),
-            "issued-first-payment", issued.get("next_payment_date").toString()).get("id"));
+            "issued-first-payment", businessToday.toString()).get("id"));
         assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM loan_schedule WHERE loan_id=? AND paid_at IS NOT NULL",
             Integer.class, issued.get("id")));
-        assertEquals(LocalDate.of(2026, 12, 21), finance.loans(stable).stream()
+        assertEquals(businessToday.plusMonths(2), finance.loans(stable).stream()
             .filter(loan -> issued.get("id").equals(loan.get("id"))).findFirst().orElseThrow()
             .get("next_payment_date"));
+        assertEquals(DomainException.Kind.CONFLICT, assertThrows(DomainException.class,
+            () -> creditAccounts.pay(stable, "ISSUED", (String) issued.get("id"), "second-too-early",
+                businessToday.plusMonths(2).toString())).kind);
     }
     private final User stable = new User("stable", "CLIENT", "STABLE", "test");
 
@@ -182,10 +219,12 @@ class FinanceIntegrationTest {
             () -> creditAccounts.rename(other, source, id, "Чужой кредит")).kind);
         assertEquals(DomainException.Kind.NOT_FOUND, assertThrows(DomainException.class,
             () -> creditAccounts.pay(other, source, id, "other-key", loan.get("next_payment_date").toString())).kind);
+        LocalDate dueToday = LocalDate.now(java.time.ZoneId.of("Europe/Moscow"));
+        db.update("UPDATE existing_loans SET next_payment_date=? WHERE id=?", dueToday, id);
         BigDecimal balance = db.queryForObject("SELECT balance FROM companies WHERE id='STABLE'", BigDecimal.class);
-        var paid = creditAccounts.pay(stable, source, id, "finance-pay-once", loan.get("next_payment_date").toString());
+        var paid = creditAccounts.pay(stable, source, id, "finance-pay-once", dueToday.toString());
         var again = creditAccounts.pay(stable, source, id, "finance-pay-once",
-            loan.get("next_payment_date").toString());
+            dueToday.toString());
         assertEquals(paid.get("id"), again.get("id"));
         assertEquals(1,
             db.queryForObject("SELECT COUNT(*) FROM loan_payments WHERE id=?", Integer.class, paid.get("id")));

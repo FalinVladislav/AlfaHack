@@ -47,13 +47,14 @@ public class JdbcAuthRepository implements AuthRepository {
     }
 
     public Map<String, Object> session(
-        String token
+        String token,
+        LocalDateTime notBefore
     ) {
         return token == null
             ? null
             : one(
-                "SELECT a.account_key,a.role,a.company_id,s.csrf FROM sessions s JOIN demo_accounts a ON a.account_key=s.account_key WHERE s.token=?",
-                token);
+                "SELECT a.account_key,a.role,a.company_id,s.csrf FROM sessions s JOIN demo_accounts a ON a.account_key=s.account_key WHERE s.token=? AND s.created_at>?",
+                token, notBefore);
     }
 
     public void deleteSession(

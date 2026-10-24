@@ -69,8 +69,8 @@ export default function App() {
         .catch((reason) => {
           if (active) setError(reason.message)
         })
-    load(api('/applications'), setApplications)
     if (me.role === 'CLIENT') {
+      load(api('/applications'), setApplications)
       load(api('/finance/summary'), setFinance)
       load(api('/dashboard'), setDashboard)
     }
@@ -135,7 +135,7 @@ export default function App() {
     window.scrollTo(0, 0)
   }
 
-  async function run(action) {
+  async function run(action, onError) {
     setBusy(true)
     setError('')
     try {
@@ -143,7 +143,8 @@ export default function App() {
       refresh()
       return result
     } catch (reason) {
-      setError(reason.message)
+      if (onError) onError(reason)
+      else setError(reason.message)
       return null
     } finally {
       setBusy(false)
@@ -191,7 +192,7 @@ export default function App() {
 
     return run(async () => {
       const context = dashboard || (await api('/dashboard'))
-      const neededBy = new Date(context.demo_today + 'T12:00:00Z')
+      const neededBy = new Date(context.business_today + 'T12:00:00Z')
       neededBy.setUTCDate(neededBy.getUTCDate() + 10)
       const days = need.purpose === 'CASH_GAP'
       const draft = await post('/drafts')
@@ -247,6 +248,7 @@ export default function App() {
         {page === 'home' && (
           <Dashboard
             finance={finance}
+            dashboard={dashboard}
             insights={insights}
             applications={applications}
             onNavigate={navigate}
@@ -278,7 +280,7 @@ export default function App() {
         {page === 'loans' && (
           <Loans
             finance={finance}
-            today={dashboard?.demo_today}
+            today={dashboard?.business_today}
             revision={revision}
             run={run}
             busy={busy}
@@ -331,11 +333,14 @@ function Header({
 }) {
   const [popover, setPopover] = useState('')
   const ref = useRef(null)
-  const actionable = applications.filter((application) =>
-    ['NEEDS_INFO', 'APPROVED', 'COUNTEROFFER', 'OFFER_ACCEPTED', 'SIGNED'].includes(
-      application.status,
-    ),
-  )
+  const actionable =
+    me.role === 'CLIENT'
+      ? applications.filter((application) =>
+          ['NEEDS_INFO', 'APPROVED', 'COUNTEROFFER', 'OFFER_ACCEPTED', 'SIGNED'].includes(
+            application.status,
+          ),
+        )
+      : []
   const unread =
     notifications.filter((item) => !item.read).length +
     applicationNotifications.filter((item) => !item.read_at).length

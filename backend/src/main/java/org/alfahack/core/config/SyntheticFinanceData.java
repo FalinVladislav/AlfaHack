@@ -92,7 +92,7 @@ public class SyntheticFinanceData implements CommandLineRunner {
             for (LocalDate day = today; !day.isBefore(today.minusMonths(6)); day = day.minusDays(1)) {
                 db.update("INSERT INTO balances VALUES (?,?,?)", company, day, closing);
                 var movement = db.queryForObject(
-                    "SELECT COALESCE(SUM(CASE WHEN type='INCOME' THEN amount ELSE -amount END),0) FROM transactions WHERE company_id=? AND date=?",
+                    "SELECT COALESCE(SUM(CASE WHEN type IN ('INCOME','FINANCING') THEN amount ELSE -amount END),0) FROM transactions WHERE company_id=? AND date=?",
                     BigDecimal.class, company, day);
                 closing = closing.subtract(movement);
             }

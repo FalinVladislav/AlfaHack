@@ -3,6 +3,7 @@ package org.alfahack.features.products.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,18 +24,18 @@ public class FinancingLimits implements FinancingLimitUseCases {
     private final FinanceUseCases finance;
     private final ForecastUseCases forecast;
     private final ProductCatalog products;
-    private final LocalDate today;
+    private final ZoneId businessZone;
 
     public FinancingLimits(
         FinanceUseCases finance,
         ForecastUseCases forecast,
         ProductCatalog products,
-        String today
+        String businessZone
     ) {
         this.finance = finance;
         this.forecast = forecast;
         this.products = products;
-        this.today = LocalDate.parse(today);
+        this.businessZone = ZoneId.of(businessZone);
     }
 
     public Map<String, Object> limits(
@@ -48,6 +49,7 @@ public class FinancingLimits implements FinancingLimitUseCases {
             throw DomainException.bad("INVALID_PURPOSE", "Выберите тип кредита");
         if (productId != null && !productId.isBlank() && !products.get(productId).purpose().equals(purpose))
             throw DomainException.bad("PURPOSE_MISMATCH", "Продукт не соответствует типу кредита");
+        LocalDate today = LocalDate.now(businessZone);
         LocalDate issue = neededBy == null ? today.plusDays(1) : neededBy;
         if (issue.isBefore(today.plusDays(1)) || issue.isAfter(today.plusDays(120)))
             throw DomainException.bad("INVALID_FINANCING_DATE", "Выберите дату получения в ближайшие 120 дней");

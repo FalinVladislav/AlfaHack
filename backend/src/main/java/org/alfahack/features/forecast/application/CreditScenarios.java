@@ -3,11 +3,13 @@ package org.alfahack.features.forecast.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.alfahack.core.domain.User;
 import org.alfahack.core.domain.Util;
 import org.alfahack.core.errors.DomainException;
@@ -24,7 +26,7 @@ public class CreditScenarios implements CreditScenarioUseCases {
     private final FinanceUseCases finance;
     private final ForecastRepository repository;
     private final ProductCatalog products;
-    private final LocalDate today;
+    private final Supplier<LocalDate> bankDate;
 
     public CreditScenarios(
         FinanceUseCases finance,
@@ -32,10 +34,28 @@ public class CreditScenarios implements CreditScenarioUseCases {
         ProductCatalog products,
         String today
     ) {
+        this(finance, repository, products, () -> LocalDate.parse(today));
+    }
+
+    public CreditScenarios(
+        FinanceUseCases finance,
+        ForecastRepository repository,
+        ProductCatalog products,
+        ZoneId businessZone
+    ) {
+        this(finance, repository, products, () -> LocalDate.now(businessZone));
+    }
+
+    private CreditScenarios(
+        FinanceUseCases finance,
+        ForecastRepository repository,
+        ProductCatalog products,
+        Supplier<LocalDate> bankDate
+    ) {
         this.finance = finance;
         this.repository = repository;
         this.products = products;
-        this.today = LocalDate.parse(today);
+        this.bankDate = bankDate;
     }
 
     @SuppressWarnings("unchecked")
@@ -96,6 +116,7 @@ public class CreditScenarios implements CreditScenarioUseCases {
         Map<String, Object> effects
     ) {
         user.client();
+        LocalDate today = bankDate.get();
         var draft = repository.draft((String) quote.get("draft_id"));
         if (((Number) draft.get("version")).intValue() != ((Number) quote.get("draft_version")).intValue())
             throw DomainException.conflict("QUOTE_STALE", "Условия изменились. Обновите расчёт кредита");
@@ -133,6 +154,8 @@ public class CreditScenarios implements CreditScenarioUseCases {
         double spread = Math.max(.1, Math.min(.5, months.stream()
             .mapToDouble(m -> Math.abs(value(m.get("income")) / income - 1)).max().orElse(.1)));
         LocalDate issue = draft.get("needed_by") == null ? today.plusDays(1) : (LocalDate) draft.get("needed_by");
+        if (issue.isBefore(today.plusDays(1)))
+            throw DomainException.conflict("QUOTE_STALE", "Дата получения прошла. Обновите условия кредита");
         LocalDate end = issue.plusMonths(12);
         var events = repository.plannedEvents(user.company(), today, end);
         var schedule = rows(products.calculate(products.get((String) quote.get("product_id")),
@@ -277,7 +300,7 @@ public class CreditScenarios implements CreditScenarioUseCases {
             "Выручка базового сценария — средняя за полные месяцы. Разброс — максимальное отклонение от среднего, ограниченное диапазоном 10–50%. Сезонность и инфляция не оценены.",
             "Половина операционных расходов считается переменной. Поступления и расходы вне известного календаря распределены равномерно; внутридневные разрывы не оценены.",
             "Известные платежи замещают часть месячного бюджета своего знака; если они больше бюджета, используются полностью. Расходы нового проекта считаются дополнительными.",
-            "В синтетической истории выплаты прежних кредитов включены в расходы: они выделены и перенесены на даты платежей. Платежи действующих кредитов приблизительны до даты погашения.",
+            "В финансовой истории выплаты прежних кредитов включены в расходы: они выделены и перенесены на даты платежей. Платежи действующих кредитов приблизительны до даты погашения.",
             "Без плана роста дополнительная выручка равна нулю. Кроме кассового разрыва, по умолчанию вся сумма кредита тратится в день выдачи; бюджет можно изменить.",
             "Для проекта: базовый сценарий использует введённые суммы; неблагоприятный — 50% доходов, 120% расходов и задержку на 2 месяца; благоприятный — 120% доходов при тех же расходах. Это допущения для проверки устойчивости."));
         if (effects != null) {

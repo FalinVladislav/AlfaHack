@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,14 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreditAccounts implements CreditAccountUseCases {
 
     private final JdbcTemplate db;
-    private final LocalDate today;
+    private final ZoneId businessZone;
 
     public CreditAccounts(
         JdbcTemplate db,
-        @Value("${app.demo-today}") String today
+        @Value("${app.business-zone}") String businessZone
     ) {
         this.db = db;
-        this.today = LocalDate.parse(today);
+        this.businessZone = ZoneId.of(businessZone);
     }
 
     public Map<String, Object> load(
@@ -107,6 +108,7 @@ public class CreditAccounts implements CreditAccountUseCases {
         result.put("loans", Map.of("items", loans, "total", loanTotal, "page", lp, "size", limit));
         result.put("payments", Map.of("items", payments, "total", paymentTotal, "page", pp, "size", limit));
         result.put("summary", summary);
+        result.put("business_today", LocalDate.now(businessZone));
         return result;
     }
 
@@ -173,8 +175,11 @@ public class CreditAccounts implements CreditAccountUseCases {
         }
         Map<String, Object> loan = ownedLoan(user.company(), source, id);
         LocalDate due = (LocalDate) loan.get("next_payment_date");
+        LocalDate paidOn = LocalDate.now(businessZone);
         if (expectedDue == null || !due.toString().equals(expectedDue))
             throw DomainException.conflict("PAYMENT_CHANGED", "Дата или сумма платежа изменилась. Обновите страницу");
+        if (due.isAfter(paidOn))
+            throw DomainException.conflict("PAYMENT_NOT_DUE", "Срок платежа ещё не наступил");
         BigDecimal debt = (BigDecimal) loan.get("remaining_debt");
         if (debt.signum() <= 0)
             throw DomainException.conflict("LOAN_CLOSED", "Кредит уже погашен");
@@ -223,13 +228,13 @@ public class CreditAccounts implements CreditAccountUseCases {
             paymentId, user.company(), user.key(), requestKey, source, id, due, payment, principal, interest,
             LocalDateTime.now());
         db.update("INSERT INTO ledger_events(id,company_id,event_date,amount,kind,source) VALUES (?,?,?,?,?,?)",
-            paymentId, user.company(), today, payment.negate(), "LOAN_PAYMENT", "Платёж по кредиту " + id);
+            paymentId, user.company(), paidOn, payment.negate(), "LOAN_PAYMENT", "Платёж по кредиту " + id);
         db.update(
             "INSERT INTO transactions(id,company_id,date,amount,type,category,counterparty_id) VALUES (?,?,?,?,?,?,?)",
-            paymentId, user.company(), today, payment, "EXPENSE", "Платёж по кредиту", "Банк");
+            paymentId, user.company(), paidOn, payment, "EXPENSE", "Платёж по кредиту", "Банк");
         if (db.update("UPDATE balances SET balance=? WHERE company_id=? AND date=?", balance.subtract(payment),
-            user.company(), today) == 0)
-            db.update("INSERT INTO balances(company_id,date,balance) VALUES (?,?,?)", user.company(), today,
+            user.company(), paidOn) == 0)
+            db.update("INSERT INTO balances(company_id,date,balance) VALUES (?,?,?)", user.company(), paidOn,
                 balance.subtract(payment));
         return row(db.queryForMap("SELECT * FROM loan_payments WHERE id=?", paymentId));
     }

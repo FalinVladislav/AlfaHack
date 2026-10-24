@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.Map;
 import javax.crypto.SecretKeyFactory;
@@ -35,7 +36,7 @@ public class AuthService implements org.alfahack.features.auth.port.AuthUseCases
             ((String) credential.get("password_hash")).getBytes(StandardCharsets.US_ASCII)))
             throw DomainException.unauthorized("INVALID_CREDENTIALS", "Неверный логин или пароль");
         String token = Util.hash(Util.id() + Util.id()), csrf = Util.hash(Util.id());
-        repository.createSession(token, key, csrf, LocalDateTime.now());
+        repository.createSession(token, key, csrf, LocalDateTime.now(ZoneOffset.UTC));
         return new Session(token, Map.of("account_key", key, "role", account.get("role"), "csrf", csrf));
     }
 
@@ -54,7 +55,7 @@ public class AuthService implements org.alfahack.features.auth.port.AuthUseCases
     public User authenticate(
         String token
     ) {
-        var row = repository.session(token);
+        var row = repository.session(token, LocalDateTime.now(ZoneOffset.UTC).minusHours(24));
         if (row == null)
             throw DomainException.unauthorized("UNAUTHORIZED", "Сначала войдите в кабинет");
         return new User((String) row.get("account_key"), (String) row.get("role"), (String) row.get("company_id"),

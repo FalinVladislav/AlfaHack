@@ -47,16 +47,16 @@ public class Documents implements org.alfahack.features.documents.port.DocumentU
                 throw DomainException.missing();
             Map<String, Object> request = rows.getFirst();
             if (file.content().length == 0 || file.content().length > 100_000)
-                throw DomainException.bad("INVALID_FILE", "Выберите подготовленную выписку CSV");
+                throw DomainException.bad("INVALID_FILE", "Выберите CSV-файл выписки");
             String filename = file.filename() == null ? "" : file.filename();
             byte[] bytes = file.content();
             if (!filename.toLowerCase().endsWith(".csv")
                 || !new String(bytes, StandardCharsets.UTF_8).matches("(?s)[\\x09\\x0A\\x0D\\x20-\\x7EА-Яа-яЁё]*"))
-                throw DomainException.bad("INVALID_FILE_TYPE", "Ожидается CSV с синтетическими данными");
+                throw DomainException.bad("INVALID_FILE_TYPE", "Ожидается CSV-файл выписки");
             byte[] expected = content.statement(user.company());
             if (expected == null || !Util.hash(bytes).equals(Util.hash(expected)))
                 throw DomainException.bad("SYNTHETIC_ONLY",
-                    "Файл не соответствует подготовленному синтетическому набору. Он не сохранён");
+                    "Файл не соответствует запрошенной выписке. Проверьте файл и повторите загрузку");
             String id = Util.id();
             repository.insert(id, requestId, user.company(), "financial_statement.csv", "text/csv", Util.hash(bytes),
                 "SEED", true, LocalDateTime.now());

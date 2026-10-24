@@ -3,6 +3,7 @@ package org.alfahack;
 import static org.junit.jupiter.api.Assertions.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.alfahack.core.domain.User;
@@ -35,10 +36,22 @@ class FinancingLimitsIntegrationTest {
     @Autowired
     JdbcTemplate db;
     static final User STABLE = new User("stable", "CLIENT", "STABLE", "test");
-    static final LocalDate ISSUE = LocalDate.of(2026, 10, 22);
+    static final LocalDate ISSUE = LocalDate.now(ZoneId.of("Europe/Moscow")).plusDays(10);
 
     @Autowired
     org.alfahack.core.serialization.JsonCodec json;
+
+    @Test
+    void dateBeforeTheCurrentBankDayIsRejected() {
+        String yesterday = LocalDate.now(ZoneId.of("Europe/Moscow")).minusDays(1).toString();
+        assertEquals(DomainException.Kind.INVALID_INPUT,
+            assertThrows(DomainException.class,
+                () -> limits.limits(STABLE, "EXPANSION", null, LocalDate.parse(yesterday))).kind);
+        var draft = drafts.create(STABLE);
+        assertEquals(DomainException.Kind.INVALID_INPUT,
+            assertThrows(DomainException.class, () -> drafts.update(STABLE, draft.get("id").toString(),
+                Map.of("expected_version", draft.get("version"), "needed_by", yesterday))).kind);
+    }
 
     @Test
     void scenarioEndpointChecksSessionCsrfOwnershipAndQuoteVersion() throws Exception {
@@ -60,6 +73,7 @@ class FinancingLimitsIntegrationTest {
         mvc.perform(
             post(path).cookie(cookie).header("X-CSRF-Token", csrf).contentType("application/json").content("{}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("READY"))
+            .andExpect(jsonPath("$.start_date").value(LocalDate.now(ZoneId.of("Europe/Moscow")).toString()))
             .andExpect(jsonPath("$.quote_id").value(qid)).andExpect(jsonPath("$.scenarios.length()").value(3))
             .andExpect(jsonPath("$.project_effect_known").value(false));
         var otherLogin = mvc.perform(post("/api/v1/auth/sessions").contentType("application/json")
@@ -81,7 +95,7 @@ class FinancingLimitsIntegrationTest {
             .content("{\"login\":\"stable\",\"password\":\"Alfa2026!\"}"))
             .andExpect(status().isOk()).andReturn().getResponse();
         mvc.perform(get("/api/v1/financing/limits").cookie(response.getCookie("cabinet_session"))
-            .param("purpose", "EXPANSION").param("product_id", "DEVELOPMENT_RATE").param("needed_by", "2026-11-01"))
+            .param("purpose", "EXPANSION").param("product_id", "DEVELOPMENT_RATE").param("needed_by", ISSUE.toString()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("AVAILABLE"))
             .andExpect(jsonPath("$.products[0].product_id").value("DEVELOPMENT_RATE"));
     }
@@ -136,10 +150,12 @@ class FinancingLimitsIntegrationTest {
     @Test
     void cashGapTermsExcludeDatesWithInsufficientRepaymentFunds() {
         var gap = new User("gap", "CLIENT", "GAP", "test");
+        db.update("INSERT INTO ledger_events(id,company_id,event_date,amount,kind,source) VALUES (?,?,?,?,?,?)",
+            java.util.UUID.randomUUID().toString(), "GAP", ISSUE.plusDays(24), new BigDecimal("-100000000"),
+            "PLANNED", "Future supplier payment");
         var result = limits.limits(gap, "CASH_GAP", null, ISSUE);
         var terms = list(list(result, "products").getFirst(), "terms");
         assertTrue(terms.stream().anyMatch(t -> ((Number) t.get("term")).intValue() == 5));
-        // Seeded supplier payment makes the baseline negative on demo day +25.
         assertFalse(terms.stream().anyMatch(t -> ((Number) t.get("term")).intValue() == 24));
     }
 
